@@ -330,6 +330,47 @@ function ConvertTo-OraclePath {
     )
 }
 
+function Test-PositiveLiteralPathspec {
+    <#
+    .SYNOPSIS
+      Verdadeiro se o pathspec e uma allowlist positiva e literal.
+
+    .DESCRIPTION
+      Uma allowlist so restringe se for de fato uma allowlist. Uma auditoria
+      reproduziu tres declaracoes que passam pela contagem `Count > 0` e nao
+      restringem nada:
+
+          WRITE_SET: :             sem restricao de pathspec -- seleciona tudo
+          WRITE_SET: :!tests/      exclude-only -- recria a blocklist removida
+          WRITE_SET: :(attr:algo)  mutavel: o git avalia atributos contra o
+                                   working tree, entao alterar `.gitattributes`
+                                   reclassifica arquivos retroativamente
+
+      Nenhuma das tres e erro de digitacao: sao formas validas de pathspec que
+      invertem o proposito do campo. Esta funcao rejeita a magia do git e aceita
+      apenas caminho literal.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [AllowEmptyString()] [string]$Pathspec)
+
+    $p = $Pathspec.Trim()
+    if ([string]::IsNullOrWhiteSpace($p)) { return $false }
+
+    # `:` inicia toda a sintaxe magica do git: `:!`, `:^`, `:(exclude)`,
+    # `:(attr:...)`, `:(glob)`, `:(icase)`, `:/`. Nenhuma pertence a uma
+    # allowlist declarada por humano.
+    if ($p.StartsWith(':')) { return $false }
+
+    # Curinga nao e literal: `engine/*` casa descendentes em subdiretorios, o que
+    # amplia a allowlist alem do que quem escreveu enxerga.
+    if ($p -match '[\*\?\[\]]') { return $false }
+
+    # Sair da raiz do repositorio nao e allowlist, e fuga.
+    if ($p -match '(^|/)\.\.(/|$)') { return $false }
+
+    return $true
+}
+
 function Test-PathspecMatchesTrackedFile {
     <#
     .SYNOPSIS
@@ -362,6 +403,59 @@ function Test-PathspecMatchesTrackedFile {
     return -not [string]::IsNullOrWhiteSpace($r.Output)
 }
 
+# Artefatos do protocolo operario<->gerente. Nao sao produto, e nao sao
+# violacao: o `AGENTS.md` EXIGE que o operario escreva o WORKER-REPORT.md ao
+# terminar ou ao travar.
+#
+# Sem esta isencao o motor se contradiz -- manda escrever o arquivo e depois
+# reprova a iteracao por ele ter sido escrito. Aconteceu na primeira missao real:
+# o operario implementou a correcao certa e o loop descartou o trabalho por
+# causa do proprio relatorio que o contrato pediu.
+#
+# Eles tambem nao entram no patch medido: relato do operario nao e evidencia, e
+# o veredito vem do exit code do gate.
+$script:ProtocolArtifacts = @('WORKER-REPORT.md')
+
+function Get-ProtocolArtifact {
+    <#
+    .SYNOPSIS
+      Lista os arquivos que o protocolo exige do operario e que nao sao produto.
+    #>
+    [CmdletBinding()]
+    param()
+    return $script:ProtocolArtifacts
+}
+
+function Split-GitPathLine {
+    <#
+    .SYNOPSIS
+      Quebra a saida de `git --name-only` em caminhos, preservando o nome.
+
+    .DESCRIPTION
+      O `.Trim()` que estava aqui removia espaco das DUAS pontas do nome. Como
+      `foo`, ` foo` e `foo ` sao tres arquivos distintos no git, isso os
+      colapsava num so, e um deles podia mascarar o outro na subtracao de
+      conjuntos.
+
+      Aqui so o `` de fim de linha do CRLF sai. O nome fica como o git o
+      escreveu.
+
+      Limite conhecido: com `core.quotePath` ligado (o padrao), o git C-quota
+      nomes nao-ASCII. Esta funcao nao desfaz o quoting -- ela compara formas
+      quotadas entre si, e as duas listas vem do mesmo git com a mesma
+      configuracao, entao a comparacao continua valida.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [AllowEmptyString()] [AllowNull()] [string]$Payload)
+
+    if ([string]::IsNullOrEmpty($Payload)) { return @() }
+    return @(
+        $Payload -split "`n" |
+            ForEach-Object { $_ -replace "`r$", '' } |
+            Where-Object { $_.Length -gt 0 }
+    )
+}
+
 function Get-PathOutsideWriteSet {
     <#
     .SYNOPSIS
@@ -382,21 +476,29 @@ function Get-PathOutsideWriteSet {
         [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]]$WriteSetPaths
     )
 
+    # `--no-renames` nao e cosmetico. Com deteccao de rename ligada, mover
+    # `fora/config.ps1` para `src/config.ps1` com `WRITE_SET: src/` produz
+    # `src/config.ps1` nas DUAS listas: o git reporta so a pos-imagem. A
+    # subtracao conclui que nada fora foi tocado, e a delecao em `fora/` fica
+    # sem registro. Desligada a deteccao, o rename vira delete + add, e o lado
+    # `fora/` aparece como violacao nomeada -- que e o que ele e.
+    $argsComuns = @('diff', '--name-only', '--no-renames', $BaseCommit)
+
     $todos = Invoke-ClosedStdinProcess -FilePath (Resolve-ExternalCommand -Name 'git') `
         -WorkingDirectory $WorktreePath `
-        -ArgumentList @('diff', '--name-only', $BaseCommit)
+        -ArgumentList $argsComuns
 
     if (-not $todos.Launched -or $todos.ExitCode -ne 0) {
         return @('<INDETERMINADO: nao foi possivel listar os arquivos alterados>')
     }
 
-    $alterados = @($todos.Output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $alterados = @(Split-GitPathLine -Payload $todos.Output)
     if ($alterados.Count -eq 0) { return @() }
 
     # `git diff -- <write-set>` devolve exatamente o subconjunto permitido; o que
     # sobra da diferenca esta fora. Usar o proprio git para decidir evita
     # reimplementar a semantica de pathspec (globs, diretorios, caixa).
-    $permitidosArgs = @('diff', '--name-only', $BaseCommit, '--') + $WriteSetPaths
+    $permitidosArgs = $argsComuns + @('--') + $WriteSetPaths
     $permitidos = Invoke-ClosedStdinProcess -FilePath (Resolve-ExternalCommand -Name 'git') `
         -WorkingDirectory $WorktreePath -ArgumentList $permitidosArgs
 
@@ -404,8 +506,17 @@ function Get-PathOutsideWriteSet {
         return @('<INDETERMINADO: nao foi possivel avaliar o write-set>')
     }
 
-    $dentro = @($permitidos.Output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-    return @($alterados | Where-Object { $dentro -notcontains $_ })
+    $dentro = @(Split-GitPathLine -Payload $permitidos.Output)
+
+    # `-cnotcontains` e a variante case-SENSITIVE. O operador padrao
+    # `-notcontains` ignora caixa: num filesystem case-sensitive, um `src/foo`
+    # legitimamente permitido faria um `SRC/FOO` externo desaparecer da lista de
+    # violacoes. Caminho e identidade de arquivo, nao texto de interface.
+    return @(
+        $alterados |
+            Where-Object { $dentro -cnotcontains $_ } |
+            Where-Object { $script:ProtocolArtifacts -cnotcontains $_ }
+    )
 }
 
 function Get-OracleViolation {
@@ -478,6 +589,8 @@ function New-FilteredPatchArgument {
     $args += @('--binary', $BaseCommit, '--')
     foreach ($path in $WriteSetPaths) { $args += $path }
     foreach ($path in $OraclePaths)   { $args += ":(exclude)$path" }
+    # Relato do operario nao e evidencia: o veredito vem do exit code do gate.
+    foreach ($path in $script:ProtocolArtifacts) { $args += ":(exclude)$path" }
     return $args
 }
 
@@ -670,7 +783,10 @@ Export-ModuleMember -Function @(
     'Test-WorktreeHasChanges'
     'ConvertTo-OraclePath'
     'Get-OracleViolation'
+    'Split-GitPathLine',
+    'Test-PositiveLiteralPathspec'
     'Test-PathspecMatchesTrackedFile'
     'Get-PathOutsideWriteSet'
+    'Get-ProtocolArtifact'
     'New-FilteredPatchArgument'
 )

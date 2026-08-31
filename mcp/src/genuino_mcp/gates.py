@@ -34,10 +34,23 @@ from .core import (
 from .secrets import FIXTURE_MARKER, PLACEHOLDER_HINTS, SECRET_RULES, scan_secrets
 
 __all__ = [
-    "BINARY_SUFFIXES", "FAIL", "INDETERMINADO", "IGNORED_DIRS", "PASS",
-    "Finding", "GateResult", "iter_text_files", "read_lines",
-    "FIXTURE_MARKER", "PLACEHOLDER_HINTS", "SECRET_RULES", "scan_secrets",
-    "BloatThresholds", "check_bloat", "scan_security", "selftest_security",
+    "BINARY_SUFFIXES",
+    "FAIL",
+    "INDETERMINADO",
+    "IGNORED_DIRS",
+    "PASS",
+    "Finding",
+    "GateResult",
+    "iter_text_files",
+    "read_lines",
+    "FIXTURE_MARKER",
+    "PLACEHOLDER_HINTS",
+    "SECRET_RULES",
+    "scan_secrets",
+    "BloatThresholds",
+    "check_bloat",
+    "scan_security",
+    "selftest_security",
     "validate_skill",
 ]
 
@@ -80,8 +93,7 @@ def scan_security(root: Path, config: str | None = None, timeout: int = 300) -> 
             return GateResult(
                 status=INDETERMINADO,
                 summary=(
-                    f"Regras vendorizadas ausentes em {VENDORED_RULES}. "
-                    "Nao foi possivel medir."
+                    f"Regras vendorizadas ausentes em {VENDORED_RULES}. Nao foi possivel medir."
                 ),
                 limits=[
                     "Ausencia de regras nao e ausencia de vulnerabilidade.",
@@ -317,16 +329,29 @@ def check_bloat(
 
     findings.extend(_report_duplicates(block_index, th))
 
+    # O sumario nomeia as extensoes medidas porque "18 arquivos" sozinho se le
+    # como "o repositorio". Um markdown de 606 KB ja passou ao lado deste gate
+    # enquanto ele reportava PASS -- corretamente, pois markdown nunca esteve no
+    # escopo. O defeito estava no relato, que deixava o leitor concluir mais do
+    # que fora medido.
+    escopo = " ".join(sorted(suffixes))
+    alcance = f"{len(files)} arquivo(s) de codigo ({escopo})"
+    limites = [
+        "Mede tamanho e repeticao, nao corretude nem necessidade.",
+        f"Fora do escopo, nao medido: qualquer arquivo que nao termine em {escopo}.",
+    ]
+
     if findings:
         return GateResult(
             status=FAIL,
-            summary=f"{len(findings)} sintoma(s) de inflacao em {len(files)} arquivo(s).",
+            summary=f"{len(findings)} sintoma(s) de inflacao em {alcance}.",
             findings=findings,
+            limits=limites,
         )
     return GateResult(
         status=PASS,
-        summary=f"Nenhum sintoma de inflacao em {len(files)} arquivo(s).",
-        limits=["Mede tamanho e repeticao, nao corretude nem necessidade."],
+        summary=f"Nenhum sintoma de inflacao em {alcance}.",
+        limits=limites,
     )
 
 

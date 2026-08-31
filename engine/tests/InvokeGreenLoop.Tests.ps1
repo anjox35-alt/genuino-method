@@ -349,3 +349,89 @@ Describe 'Allowlist de write-set contra repositorio real' {
         Test-PathspecMatchesTrackedFile -RepoPath $script:R -Commit $script:Base -Pathspec 'test/'  | Should -BeFalse
     }
 }
+
+Describe 'Get-PathOutsideWriteSet -- achados da auditoria do Codex' {
+
+    BeforeAll {
+        $script:RN = New-Sandbox
+        New-Item -ItemType Directory -Path (Join-Path $script:RN 'src')  -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $script:RN 'fora') -Force | Out-Null
+        'conteudo que sai de fora' | Set-Content -LiteralPath (Join-Path $script:RN 'fora/config.txt')
+        'base'                     | Set-Content -LiteralPath (Join-Path $script:RN 'src/app.txt')
+        & git -C $script:RN add -A
+        & git -C $script:RN commit -qm 'antes do rename'
+        $script:BaseRN = (& git -C $script:RN rev-parse HEAD).Trim()
+
+        # O operario move um arquivo de FORA do write-set para DENTRO dele.
+        # Com deteccao de rename ligada, `git diff --name-only` reporta apenas a
+        # pos-imagem `src/config.txt` -- que esta no write-set -- e a delecao em
+        # `fora/` desaparece das duas listas.
+        & git -C $script:RN mv 'fora/config.txt' 'src/config.txt'
+        & git -C $script:RN add -A
+    }
+
+    It 'nomeia o lado de FORA de um rename que entra no write-set' {
+        $fora = @(Get-PathOutsideWriteSet -WorktreePath $script:RN -BaseCommit $script:BaseRN -WriteSetPaths @('src/'))
+        $fora | Should -Contain 'fora/config.txt'
+    }
+
+    It 'o git realmente detectaria o rename, se nao fosse --no-renames' {
+        # Sem este caso, o teste acima passaria mesmo que o git nunca tivesse
+        # casado o rename -- e nao provaria nada sobre a correcao.
+        $comDeteccao = (& git -C $script:RN diff --name-only --find-renames $script:BaseRN) -join "`n"
+        $comDeteccao | Should -Not -Match 'fora/config.txt'
+        $comDeteccao | Should -Match 'src/config.txt'
+    }
+}
+
+Describe 'Split-GitPathLine' {
+
+    It 'preserva espaco nas pontas: foo, " foo" e "foo " sao tres arquivos' {
+        $r = @(Split-GitPathLine -Payload "foo`n foo`nfoo ")
+        $r.Count | Should -Be 3
+        $r       | Should -Contain ' foo'
+        $r       | Should -Contain 'foo '
+    }
+
+    It 'remove o CR do CRLF sem tocar o resto do nome' {
+        $r = @(Split-GitPathLine -Payload "src/a.txt`r`nsrc/b.txt`r`n")
+        $r | Should -Be @('src/a.txt', 'src/b.txt')
+    }
+
+    It 'saida vazia ou nula devolve colecao vazia, nao um item em branco' {
+        @(Split-GitPathLine -Payload '').Count   | Should -Be 0
+        @(Split-GitPathLine -Payload $null).Count | Should -Be 0
+    }
+}
+
+Describe 'Get-PathOutsideWriteSet -- comparacao sensivel a caixa' {
+
+    BeforeAll {
+        # Este caso so e observavel onde o filesystem distingue caixa. No NTFS,
+        # `src/foo.txt` e `SRC/FOO.txt` sao o mesmo arquivo e o cenario nao pode
+        # ser montado. O CI roda a matriz em ubuntu, onde ele roda de verdade.
+        $script:RC = New-Sandbox
+        $sonda = Join-Path $script:RC 'Caixa.probe'
+        'x' | Set-Content -LiteralPath $sonda
+        $script:CaseSensitive = -not (Test-Path -LiteralPath (Join-Path $script:RC 'caixa.probe'))
+        Remove-Item -LiteralPath $sonda -Force
+    }
+
+    It 'um caminho permitido nao mascara um caminho externo de caixa diferente' -Skip:(-not $script:CaseSensitive) {
+        New-Item -ItemType Directory -Path (Join-Path $script:RC 'src') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $script:RC 'SRC') -Force | Out-Null
+        'permitido' | Set-Content -LiteralPath (Join-Path $script:RC 'src/foo.txt')
+        & git -C $script:RC add -A
+        & git -C $script:RC commit -qm 'base caixa'
+        $base = (& git -C $script:RC rev-parse HEAD).Trim()
+
+        'alterado' | Set-Content -LiteralPath (Join-Path $script:RC 'src/foo.txt')
+        'externo'  | Set-Content -LiteralPath (Join-Path $script:RC 'SRC/FOO.txt')
+        & git -C $script:RC add -A
+
+        $fora = @(Get-PathOutsideWriteSet -WorktreePath $script:RC -BaseCommit $base -WriteSetPaths @('src/'))
+        # Com `-notcontains` (case-insensitive), 'SRC/FOO.txt' casaria com
+        # 'src/foo.txt' da lista de permitidos e sumiria daqui.
+        $fora | Should -Contain 'SRC/FOO.txt'
+    }
+}

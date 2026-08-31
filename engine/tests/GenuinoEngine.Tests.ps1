@@ -316,9 +316,13 @@ Describe 'New-FilteredPatchArgument' {
         (New-FilteredPatchArgument -BaseCommit 'abc' -WriteSetPaths @('src/') -OraclePaths @()) | Should -Contain '--binary'
     }
 
-    It 'sem oraculo, nao emite nenhuma exclusao' {
+    It 'sem oraculo, nao emite exclusao DE ORACULO' {
+        # A exclusao do artefato de protocolo (WORKER-REPORT.md) e sempre
+        # emitida: relato do operario nao e produto, com ou sem oraculo.
         $a = New-FilteredPatchArgument -BaseCommit 'abc' -WriteSetPaths @('src/') -OraclePaths @()
-        ($a -join ' ') | Should -Not -BeLike '*exclude*'
+        $excl = @($a | Where-Object { $_ -like ':(exclude)*' })
+        $excl.Count | Should -Be 1
+        $excl[0]    | Should -Be ':(exclude)WORKER-REPORT.md'
     }
 }
 
@@ -354,5 +358,58 @@ Describe 'Invoke-Gate -- medicao versus reprovacao' {
         # 30s e o piso aceito pelo wrapper; o comando dorme exatamente isso.
         # O que importa aqui e que um estouro nunca vira exit 1.
         $r.ExitCode | Should -Not -Be 1
+    }
+}
+
+Describe 'Artefatos de protocolo' {
+
+    It 'WORKER-REPORT.md e reconhecido como artefato de protocolo' {
+        # O AGENTS.md EXIGE que o operario escreva este arquivo. Trata-lo como
+        # violacao faria o motor mandar escrever e depois reprovar por ter
+        # escrito -- o que aconteceu na primeira missao real e descartou uma
+        # implementacao correta.
+        Get-ProtocolArtifact | Should -Contain 'WORKER-REPORT.md'
+    }
+
+    It 'o patch exclui o relato do operario' {
+        # Relato nao e evidencia. O veredito vem do exit code do gate.
+        $a = New-FilteredPatchArgument -BaseCommit 'abc' -WriteSetPaths @('src/')
+        ($a -join ' ') | Should -BeLike '*:(exclude)WORKER-REPORT.md*'
+    }
+}
+
+Describe 'Test-PositiveLiteralPathspec' {
+
+    It 'aceita caminho literal e diretorio' {
+        Test-PositiveLiteralPathspec -Pathspec 'src/'              | Should -BeTrue
+        Test-PositiveLiteralPathspec -Pathspec 'mcp/src/genuino_mcp/' | Should -BeTrue
+        Test-PositiveLiteralPathspec -Pathspec 'engine/app.ps1'    | Should -BeTrue
+    }
+
+    It 'rejeita as tres formas que uma auditoria reproduziu como nao-allowlist' {
+        # Todas passam por `Count > 0` e nao restringem nada.
+        Test-PositiveLiteralPathspec -Pathspec ':'              | Should -BeFalse
+        Test-PositiveLiteralPathspec -Pathspec ':!tests/'       | Should -BeFalse
+        Test-PositiveLiteralPathspec -Pathspec ':(attr:algo)'   | Should -BeFalse
+    }
+
+    It 'rejeita o resto da magia de pathspec do git' {
+        foreach ($p in @(':^tests/', ':(exclude)x', ':(glob)**/y', ':(icase)Z', ':/raiz')) {
+            Test-PositiveLiteralPathspec -Pathspec $p | Should -BeFalse -Because "'$p' e magia, nao allowlist"
+        }
+    }
+
+    It 'rejeita curinga, porque amplia a allowlist alem do visivel' {
+        # `engine/*` casa descendentes em subdiretorios -- verificado com git 2.55.
+        Test-PositiveLiteralPathspec -Pathspec 'engine/*'   | Should -BeFalse
+        Test-PositiveLiteralPathspec -Pathspec 'a?b'        | Should -BeFalse
+        Test-PositiveLiteralPathspec -Pathspec 'x[0-9].ps1' | Should -BeFalse
+    }
+
+    It 'rejeita fuga da raiz e valor vazio' {
+        Test-PositiveLiteralPathspec -Pathspec '../fora/'  | Should -BeFalse
+        Test-PositiveLiteralPathspec -Pathspec 'src/../..' | Should -BeFalse
+        Test-PositiveLiteralPathspec -Pathspec ''          | Should -BeFalse
+        Test-PositiveLiteralPathspec -Pathspec '   '       | Should -BeFalse
     }
 }

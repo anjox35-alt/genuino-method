@@ -15,9 +15,13 @@ Contrato de exit code, o mesmo do resto do metodo:
 
 from __future__ import annotations
 
+import io
+import re
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 
+from . import seal
 from .gates import (
     FAIL,
     INDETERMINADO,
@@ -35,6 +39,38 @@ def _render(name: str, result: GateResult) -> None:
         print(f"    {finding.path}:{finding.line} [{finding.rule}] {finding.excerpt[:120]}")
     for limit in result.limits:
         print(f"    limite: {limit}")
+
+
+def _check_seal(root: Path) -> GateResult:
+    method = root / "method"
+    if not method.exists():
+        return GateResult(
+            status=PASS,
+            summary="Nao se aplica: diretorio method/ ausente.",
+        )
+
+    # O `seal.main` e uma CLI e escreve o proprio relatorio no stdout. Chamado de
+    # dentro de um gate, isso imprimia duas linhas para um gate so, e a primeira
+    # nao seguia o formato `[STATUS] nome: resumo` que o resto do relatorio usa.
+    # A saida vira o `summary` deste gate, que e onde ela pertence.
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        exit_code = seal.main(["check", str(method), str(method / "MANIFEST.sha256")])
+    # A CLI do selo prefixa a propria linha com `[STATUS]`. Aqui esse prefixo
+    # seria o segundo na mesma linha, entao fica so o corpo da mensagem.
+    detalhe = buffer.getvalue().strip().splitlines()
+    corpo = re.sub(r"^\[[A-Z]+\]\s*", "", detalhe[-1].strip()) if detalhe else ""
+    sufixo = f" ({corpo})" if corpo else ""
+    outcomes = {
+        0: (PASS, f"Selo de method/ confere.{sufixo}"),
+        1: (FAIL, f"Selo de method/ nao confere.{sufixo}"),
+        2: (INDETERMINADO, f"Nao foi possivel verificar o selo de method/.{sufixo}"),
+    }
+    status, summary = outcomes.get(
+        exit_code,
+        (INDETERMINADO, f"Gate de selo retornou codigo inesperado: {exit_code}."),
+    )
+    return GateResult(status=status, summary=summary)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -64,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     # proprio em `selftest_security`, que exige que essas mesmas regras
     # continuem detectando os casos de controle.
     results = {
+        "seal": _check_seal(root),
         "scan_secrets": scan_secrets(root, allow_paths=(".semgrep/",)),
         "check_bloat": check_bloat(root, skip_paths=("method/",)),
         # O selftest roda ANTES de qualquer scan valer alguma coisa: um ruleset

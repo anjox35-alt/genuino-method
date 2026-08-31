@@ -10,7 +10,6 @@ Evidencia que parece cobrir mais do que cobre e pior que evidencia ausente.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from genuino_mcp import check_tree
@@ -23,15 +22,36 @@ def _arvore_com_metodo(raiz: Path) -> Path:
     (method / "SKILL.md").write_text("---\nname: x\ndescription: y\n---\ncorpo\n", encoding="utf-8")
     (raiz / "app.py").write_text("def soma(a, b):\n    return a + b\n", encoding="utf-8")
     from genuino_mcp import seal
+
     seal.main(["write", str(method), str(method / "MANIFEST.sha256")])
     return method
 
 
-def test_gate_reprova_quando_o_conteudo_selado_foi_alterado(tmp_path: Path) -> None:
-    """Este e o caso que o gate afirmava cobrir e nao cobria."""
+def test_gate_reprova_quando_o_conteudo_selado_foi_alterado(tmp_path: Path, capsys) -> None:
+    """Este e o caso que o gate afirmava cobrir e nao cobria.
+
+    A asercao NAO pode ser apenas `exit != 0`. Numa arvore temporaria sem
+    `.semgrep/rules`, o gate ja devolve 2 por nao conseguir medir a seguranca --
+    e o teste passaria sem que o selo tivesse sido olhado uma unica vez.
+
+    A asercao e sobre o RELATORIO: o gate de selo precisa aparecer e precisa
+    reprovar. Isso mata o mutante em que o selo nunca e chamado.
+
+    Este teste ja esteve na forma fraca, e foi commitado assim. O operario
+    trabalhou contra um oraculo insuficiente e produziu GREEN legitimo aos olhos
+    do motor -- que e exatamente o limite 1 de docs/limites.md acontecendo na
+    pratica.
+    """
     method = _arvore_com_metodo(tmp_path)
-    (method / "SKILL.md").write_text("---\nname: x\ndescription: y\n---\nADULTERADO\n", encoding="utf-8")
-    assert check_tree.main([str(tmp_path)]) != 0
+    (method / "SKILL.md").write_text(
+        "---\nname: x\ndescription: y\n---\nADULTERADO\n", encoding="utf-8"
+    )
+    codigo = check_tree.main([str(tmp_path)])
+    saida = capsys.readouterr().out
+
+    assert "seal" in saida.lower(), "o gate de selo nao aparece no relatorio"
+    assert "[FAIL] seal" in saida, "o selo nao reprovou conteudo adulterado"
+    assert codigo == 1, f"adulteracao medida deve ser exit 1, veio {codigo}"
 
 
 def test_gate_aprova_arvore_com_selo_integro(tmp_path: Path, capsys) -> None:

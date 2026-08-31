@@ -161,6 +161,17 @@ if ($writeSet.Count -eq 0) {
     exit $EXIT_RED
 }
 
+# Contar caminhos nao basta: `:`, `:!tests/` e `:(attr:x)` passam pela contagem
+# e nao restringem nada -- o primeiro seleciona tudo, o segundo recria a
+# blocklist, o terceiro muda de significado quando `.gitattributes` muda.
+foreach ($path in ($writeSet + $oraclePaths)) {
+    if (-not (Test-PositiveLiteralPathspec -Pathspec $path)) {
+        Write-Log "G0 REPROVOU: '$path' nao e um caminho positivo e literal."
+        Write-Log "  Allowlist nao aceita magia de pathspec do git (':', ':!', ':(attr:...)') nem curinga."
+        exit $EXIT_RED
+    }
+}
+
 Write-Log "G0 admitiu '$missionId'."
 Write-Log "  write-set: $($writeSet -join ', ')"
 Write-Log "  oraculo:   $(if ($oraclePaths) { $oraclePaths -join ', ' } else { 'NENHUM (declarado)' })"
