@@ -1,0 +1,58 @@
+#!/bin/sh
+# Gate de publicacao antes de qualquer push.
+#
+# Existe porque a R6 -- "nenhum push acontece sem scan_secrets passar sobre a
+# arvore inteira, ANTES do push e nao depois" -- era cumprida por disciplina, e
+# disciplina falhou.
+#
+# O caso concreto: o gerente rodou o gate encadeado com `&&`, na forma
+#
+#     ... check_tree .. | grep -E "GATE DE" && git commit && git push
+#
+# O `grep` saiu com 0 por ter ENCONTRADO a linha "GATE DE PUBLICACAO:
+# BLOQUEADO". O `&&` seguiu adiante e publicou com o gate vermelho. O exit code
+# que importava foi descartado por um pipe.
+#
+# Uma regra que depende de alguem lembrar de ler o exit code certo nao e uma
+# regra, e uma intencao. Aqui o git le o exit code, e o git nao esquece.
+
+# Sem `set -e` de proposito. Com ele, a atribuicao `saida=$(... )` de um gate
+# que reprova encerra o script na hora, e o `case` que explica o motivo nunca
+# roda: o push era bloqueado sem dizer por que. Um bloqueio sem motivo nao e
+# acionavel -- foi assim que a primeira versao deste hook se comportou.
+
+raiz=$(git rev-parse --show-toplevel)
+cd "$raiz/mcp" || {
+    echo "pre-push: nao encontrei mcp/ em $raiz" >&2
+    exit 1
+}
+
+# OneDrive quebra os hardlinks que o uv tenta criar (os error 396).
+UV_LINK_MODE=copy
+export UV_LINK_MODE
+
+echo "pre-push: rodando o gate de publicacao sobre a arvore inteira..."
+saida=$(uv run python -m genuino_mcp.check_tree .. 2>&1)
+codigo=$?
+
+echo "$saida" | grep -E '^\[|^GATE DE' || true
+
+case $codigo in
+    0)
+        echo "pre-push: gate PASS, push liberado."
+        ;;
+    1)
+        echo "" >&2
+        echo "pre-push: BLOQUEADO. O gate de publicacao reprovou." >&2
+        echo "  Corrija os achados acima. Um literal com forma de segredo que" >&2
+        echo "  seja fixture legitima marca-se com 'genuino:fixture' na linha" >&2
+        echo "  ou na imediatamente anterior." >&2
+        exit 1
+        ;;
+    *)
+        echo "" >&2
+        echo "pre-push: BLOQUEADO. O gate nao pode medir (exit $codigo)." >&2
+        echo "  Nao medir nao e aprovar. Resolva o ambiente e tente de novo." >&2
+        exit 1
+        ;;
+esac

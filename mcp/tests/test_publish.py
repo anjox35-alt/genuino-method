@@ -59,9 +59,11 @@ def _grava(tmp_path: Path, dados: dict) -> Path:
 
 def test_caminho_do_repositorio_vira_marcador(tmp_path: Path) -> None:
     dados = dict(VEREDITO_MINIMO)
+    # genuino:fixture: caminho ficticio, e o dado de entrada do teste
     dados["notes"] = [r"patch aplicado em C:\Users\fulano\dev\genuino-method\mcp"]
     registro = _publish().build_public_verdict(
         _grava(tmp_path, dados),
+        # genuino:fixture: caminho ficticio, e o dado de entrada do teste
         repo_root=Path(r"C:\Users\fulano\dev\genuino-method"),
     )
     texto = json.dumps(registro)
@@ -82,6 +84,7 @@ def test_recusa_quando_sobra_caminho_absoluto_desconhecido(tmp_path: Path) -> No
     with pytest.raises(_publish().PublicacaoRecusada) as erro:
         _publish().build_public_verdict(
             _grava(tmp_path, dados),
+            # genuino:fixture: caminho ficticio, e o dado de entrada do teste
             repo_root=Path(r"C:\Users\fulano\dev\genuino-method"),
         )
     assert "D:" in str(erro.value), (
@@ -109,6 +112,7 @@ def test_recusa_caminho_unix_de_home(tmp_path: Path) -> None:
         r"\\servidor\compartilhado\segredo.txt",
         "/var/lib/postgresql/dados",
         "/opt/ferramenta-interna/config",
+        # genuino:fixture: caminho ficticio, e o dado de entrada do teste
         "/Users/outrapessoa/Documents/x",
         "/srv/nao-e-o-repo/arquivo",
     ],

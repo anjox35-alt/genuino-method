@@ -42,6 +42,7 @@ The test `test_recusa_qualquer_absoluto_nao_reconhecido` has these cases:
 - `\\servidor\compartilhado\segredo.txt`
 - `/var/lib/postgresql/dados`
 - `/opt/ferramenta-interna/config`
+<!-- genuino:fixture: caminho ficticio, e o dado de entrada do teste -->
 - `/Users/outrapessoa/Documents/x`
 - `/srv/nao-e-o-repo/arquivo`
 
