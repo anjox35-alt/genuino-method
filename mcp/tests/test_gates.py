@@ -485,42 +485,16 @@ def test_chave_dentro_de_string_nao_desbalanceia_a_contagem(tmp_path: Path) -> N
 def test_funcao_longa_com_string_e_medida_no_fim_exato(tmp_path: Path) -> None:
     """A correcao nao pode virar cegueira, nem acertar pelo motivo errado.
 
-    Duas rodadas de revisao independente derrubaram as versoes anteriores deste
-    teste. O que cada uma matou esta registrado aqui porque a fixture so parece
-    arbitraria para quem nao viu o mutante que ela existe para matar.
+    Tres rodadas de contra-auditoria independente derrubaram versoes anteriores
+    deste teste, e a fixture so parece arbitraria para quem nao viu o mutante
+    que cada peca existe para matar. Os seis mutantes, o que cada rodada achou e
+    as duas recusas do gerente estao em
+    `audits/2026-08-31-oraculo-check-bloat/AUDITORIA.md`.
 
-    RODADA 1 derrubou a versao que so verificava se o gate acusava: ela ficava
-    verde com a implementacao AINDA defeituosa, porque a contagem estourava,
-    caia no `return len(lines)`, e o arquivo terminava junto com a funcao.
-
-    RODADA 2 derrubou a versao que exigia `medido < 100`: uma faixa aceita
-    qualquer valor entre 21 e 99, e o mutante `return index` -- off-by-one --
-    media 64 em vez de 65 e passava. Com teto N, uma funcao real de N+1 linhas
-    passaria a medir N e deixaria de ser acusada. Agora o assert e igualdade
-    exata, derivada da propria fixture.
-
-    A fixture mata, por construcao:
-
-    - contagem crua (o defeito atual): as linhas com `'{'` e `"{"` fazem a
-      profundidade subir, o fallback de EOF inclui as 200 linhas de top-level,
-      e o comprimento medido vem 266 em vez de 65;
-    - "a primeira `}` encerra a funcao": termina na chave que fecha o `if` e
-      mede 4 linhas, entao o gate nao acusa nada;
-    - "ignorar toda linha que contenha aspas": a linha `if ($x -eq '{') {`
-      carrega string E abre bloco real. Ignora-la perde a abertura, a `}`
-      interna encerra a funcao cedo, e o gate nao acusa;
-    - "remover apenas literais de aspas simples": as linhas com `"{"` continuam
-      contando, a profundidade estoura, e o comprimento erra;
-    - "ignorar `{` em string mas continuar contando `}` em string": o
-      `Write-Output '}'` no meio do corpo zera a profundidade cedo, a funcao e
-      medida com 15 linhas, e o gate nao acusa. Chave em string nao e estrutura
-      DOS DOIS LADOS;
-    - `return index` em vez de `return index + 1`: mede uma linha a menos, e a
-      igualdade exata recusa;
-    - "remover o literal exato que apareceu no defeito": todas as chaves das
-      fixtures vem grudadas em texto (`json quebrado: {`), entao um replace da
-      sequencia isolada nao casa nada, a profundidade estoura e o comprimento
-      erra. Achado da rodada 3, e a STOP CONDITION que a missao ja declarava.
+    O essencial: os dois asserts sao necessarios. O primeiro mata os mutantes
+    que fazem o gate emudecer; o segundo, por igualdade exata e nao por faixa,
+    mata os que o fazem acertar pelo motivo errado -- entre eles o off-by-one,
+    que com teto N deixaria uma funcao de N+1 linhas de ser acusada.
     """
     # Montadas por concatenacao, e nao por literal aninhado: uma chave dentro de
     # f-string aninhada e exatamente o tipo de linha que este teste existe para
