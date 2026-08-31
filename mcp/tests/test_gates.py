@@ -404,3 +404,49 @@ def test_skip_paths_do_bloat_nao_afeta_scan_secrets(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert gates.scan_secrets(tmp_path).status == gates.FAIL
+
+
+def test_funcao_longa_nao_engole_o_codigo_abaixo(tmp_path: Path) -> None:
+    """Regressao: a ultima funcao de um script engolia todo o top-level abaixo.
+
+    Uma funcao de oito linhas era reportada com cento e oitenta. Gate que acusa
+    o inocente perde a autoridade de acusar o culpado.
+    """
+    corpo_solto = "\n".join(f"Write-Output {i}" for i in range(200))
+    (tmp_path / "script.ps1").write_text(
+        "function Curta {\n    Write-Output 'ok'\n}\n\n" + corpo_solto + "\n",
+        encoding="utf-8",
+    )
+    result = gates.check_bloat(
+        tmp_path, gates.BloatThresholds(max_file_lines=9999, max_function_lines=20)
+    )
+    assert not any(f.rule == "funcao-longa" for f in result.findings)
+
+
+def test_funcao_longa_ainda_e_detectada_com_chaves(tmp_path: Path) -> None:
+    """A correcao nao pode virar cegueira: funcao grande de verdade reprova."""
+    corpo = "\n".join(f"    Write-Output {i}" for i in range(60))
+    (tmp_path / "grande.ps1").write_text(
+        f"function Enorme {{\n{corpo}\n}}\n", encoding="utf-8"
+    )
+    result = gates.check_bloat(
+        tmp_path, gates.BloatThresholds(max_file_lines=9999, max_function_lines=20)
+    )
+    assert any(f.rule == "funcao-longa" for f in result.findings)
+
+
+def test_scan_respeita_gitignore_quando_ha_repositorio(tmp_path: Path) -> None:
+    """Reprovar por arquivo ignorado ensina o time a ignorar o gate."""
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=False, capture_output=True)
+    (tmp_path / ".gitignore").write_text("runs/\n", encoding="utf-8")
+    ignorado = tmp_path / "runs"
+    ignorado.mkdir()
+    (ignorado / "log.txt").write_text(
+        # genuino:fixture: literal falso, existe para provar que o gate reprova
+        'K = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    assert gates.scan_secrets(tmp_path).status == gates.PASS

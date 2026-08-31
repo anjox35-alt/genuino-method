@@ -35,7 +35,18 @@ $script:RequiredMissionFields = @(
     'FRONTEIRA'               # onde o resultado precisa funcionar de verdade
     'GATE_DA_FRONTEIRA'       # o que prova que funciona la
     'PRE_REQUISITOS_HUMANOS'  # o que o loop nao pode resolver sozinho
+    'ORACULO'                 # o que o operario nao pode tocar
 )
+
+# ORACULO e obrigatorio porque sem ele o motor nao tem como proteger o que mede.
+# O operario recebe escrita no worktree de trabalho, e o sandbox do Codex protege
+# apenas `.git`, `.agents` e `.codex` -- nao existe forma documentada de declarar
+# caminhos protegidos adicionais. Entao a protecao acontece no lado do motor: os
+# caminhos do oraculo sao excluidos do patch antes de a medicao acontecer.
+#
+# Sem esse campo, "nao altere os testes" seria promessa de prompt, e um operario
+# que enfraquecesse o teste de aceitacao produziria GREEN legitimo aos olhos do
+# motor.
 
 function Get-RequiredMissionField {
     <#
@@ -174,51 +185,73 @@ function Invoke-Gate {
         [string]$WorkingDirectory,
 
         [Parameter(Mandatory)]
-        [string]$LogPath
-    )
+        [string]$LogPath,
 
-    if (-not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
-        $message = "Gate '$Name': diretorio de trabalho inexistente: $WorkingDirectory"
-        Set-Content -LiteralPath $LogPath -Value $message -Encoding utf8
-        return [PSCustomObject]@{
-            Name     = $Name
-            ExitCode = $script:ExitCannotMeasure
-            Status   = 'INDETERMINADO'
-            LogPath  = $LogPath
-        }
-    }
+        [int]$TimeoutSeconds = 900
+    )
 
     $logDir = Split-Path -Parent $LogPath
     if ($logDir -and -not (Test-Path -LiteralPath $logDir)) {
         New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }
 
-    $previous = $PWD
-    $exitCode = $script:ExitCannotMeasure
-    try {
-        Set-Location -LiteralPath $WorkingDirectory
-        # pwsh -Command isola o gate: uma chamada a `exit` dentro do comando
-        # encerraria este motor se fosse avaliada no processo atual.
-        $output = & pwsh -NoProfile -NonInteractive -Command $Command 2>&1
-        $exitCode = $LASTEXITCODE
-        if ($null -eq $exitCode) { $exitCode = $script:ExitPass }
-        $output | Out-String | Set-Content -LiteralPath $LogPath -Encoding utf8
-    }
-    catch {
-        # Falha ao sequer lancar o processo e ambiente, nao veredito.
-        Set-Content -LiteralPath $LogPath -Value "Falha ao executar o gate: $($_.Exception.Message)" -Encoding utf8
-        $exitCode = $script:ExitCannotMeasure
-    }
-    finally {
-        Set-Location -LiteralPath $previous
+    function Complete-Gate {
+        param([int]$Code, [string]$Detail)
+        # O exit code vai para disco ao lado do log. Sem isto, dois gates
+        # silenciosos -- um com 0 e outro com 1 -- produzem arquivos identicos, e
+        # o auditor precisa confiar na palavra do motor para saber qual ocorreu.
+        $meta = @{
+            name       = $Name
+            command    = $Command
+            exit_code  = $Code
+            status     = (ConvertTo-GateStatus -ExitCode $Code)
+            measured_at = (Get-Date).ToUniversalTime().ToString('o')
+            working_directory_existed = (Test-Path -LiteralPath $WorkingDirectory -PathType Container)
+        }
+        ($meta | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath "$LogPath.meta.json" -Encoding utf8
+        if ($Detail) { Set-Content -LiteralPath $LogPath -Value $Detail -Encoding utf8 }
+        return [PSCustomObject]@{
+            Name     = $Name
+            ExitCode = $Code
+            Status   = (ConvertTo-GateStatus -ExitCode $Code)
+            LogPath  = $LogPath
+            MetaPath = "$LogPath.meta.json"
+        }
     }
 
-    return [PSCustomObject]@{
-        Name     = $Name
-        ExitCode = $exitCode
-        Status   = ConvertTo-GateStatus -ExitCode $exitCode
-        LogPath  = $LogPath
+    if (-not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
+        return Complete-Gate $script:ExitCannotMeasure `
+            "Gate '$Name': diretorio de trabalho inexistente: $WorkingDirectory"
     }
+
+    # Sintaxe invalida NAO e reprovacao do produto: e impossibilidade de medir.
+    # Sem esta checagem, um erro de digitacao no TEST_CMD faz o shell sair com 1
+    # e o motor conta uma iteracao contra o operario por um defeito da missao.
+    $parseErrors = $null
+    [void][System.Management.Automation.Language.Parser]::ParseInput(
+        $Command, [ref]$null, [ref]$parseErrors)
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+        return Complete-Gate $script:ExitCannotMeasure `
+            "Gate '$Name': o comando nao e PowerShell valido. $($parseErrors[0].Message)"
+    }
+
+    $pwshPath = Resolve-ExternalCommand -Name 'pwsh'
+    if (-not $pwshPath) {
+        return Complete-Gate $script:ExitCannotMeasure "Gate '$Name': pwsh nao encontrado no PATH."
+    }
+
+    # Processo isolado com timeout: um gate travado nao pode segurar o loop para
+    # sempre, e uma chamada a `exit` dentro do comando nao pode matar o motor.
+    $run = Invoke-ClosedStdinProcess -FilePath $pwshPath -WorkingDirectory $WorkingDirectory `
+        -TimeoutSeconds $TimeoutSeconds `
+        -ArgumentList @('-NoProfile', '-NonInteractive', '-Command', $Command)
+
+    Set-Content -LiteralPath $LogPath -Value $run.Output -Encoding utf8
+
+    if (-not $run.Launched -or $run.TimedOut) {
+        return Complete-Gate $script:ExitCannotMeasure $null
+    }
+    return Complete-Gate $run.ExitCode $null
 }
 
 function ConvertTo-GateStatus {
@@ -256,6 +289,268 @@ function Test-IterationConsumed {
     return ($ExitCode -eq $script:ExitPass -or $ExitCode -eq $script:ExitMeasuredFail)
 }
 
+function ConvertTo-OraclePath {
+    <#
+    .SYNOPSIS
+      Normaliza o campo ORACULO da missao numa lista de caminhos.
+
+    .DESCRIPTION
+      Aceita caminhos separados por virgula ou ponto e virgula. Normaliza para
+      barra normal, porque o pathspec do git usa esse separador nos dois sistemas
+      operacionais.
+
+      `NENHUM` devolve lista vazia. Isso e uma declaracao explicita de que a
+      missao nao tem oraculo a proteger -- diferente de esquecer o campo, que o
+      gate de admissao reprova.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [AllowEmptyString()] [string]$Declaration)
+
+    if ([string]::IsNullOrWhiteSpace($Declaration) -or $Declaration.Trim() -eq 'NENHUM') {
+        return @()
+    }
+
+    return @(
+        $Declaration -split '[;,]' |
+            ForEach-Object { $_.Trim().Replace('\', '/') } |
+            Where-Object { $_ }
+    )
+}
+
+function Get-OracleViolation {
+    <#
+    .SYNOPSIS
+      Lista os arquivos do oraculo que o operario tocou.
+
+    .DESCRIPTION
+      Compara o worktree contra o commit-base congelado. Qualquer caminho do
+      oraculo que apareca aqui e uma violacao do contrato do operario: ele
+      alterou aquilo que mede o proprio trabalho.
+
+      Detectar nao basta -- o patch tambem exclui esses caminhos --, mas registrar
+      a violacao transforma uma tentativa silenciosa em evidencia nomeada.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$WorktreePath,
+        [Parameter(Mandatory)] [string]$BaseCommit,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]]$OraclePaths
+    )
+
+    if ($OraclePaths.Count -eq 0) { return @() }
+
+    $args = @('diff', '--name-only', $BaseCommit, '--') + $OraclePaths
+    $result = Invoke-ClosedStdinProcess -FilePath (Resolve-ExternalCommand -Name 'git') `
+        -WorkingDirectory $WorktreePath -ArgumentList $args
+
+    if (-not $result.Launched -or $result.ExitCode -ne 0) {
+        # Nao conseguir medir a violacao nao e prova de que nao houve violacao.
+        return @('<INDETERMINADO: nao foi possivel comparar o oraculo>')
+    }
+
+    return @($result.Output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+function New-FilteredPatchArgument {
+    <#
+    .SYNOPSIS
+      Monta os argumentos de `git diff` que excluem o oraculo do patch.
+
+    .DESCRIPTION
+      O pathspec `:(exclude)<caminho>` do git remove aqueles caminhos do
+      resultado. E o que garante que o trabalho do operario chegue ao ambiente de
+      medicao sem levar junto uma alteracao no proprio medidor.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$BaseCommit,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]]$OraclePaths,
+        [switch]$NameStatus
+    )
+
+    $args = @('diff')
+    if ($NameStatus) { $args += '--name-status' }
+    $args += @('--binary', $BaseCommit, '--', '.')
+    foreach ($path in $OraclePaths) { $args += ":(exclude)$path" }
+    return $args
+}
+
+function Resolve-ExternalCommand {
+    <#
+    .SYNOPSIS
+      Resolve o nome de um comando para um executavel que Process.Start aceita.
+
+    .DESCRIPTION
+      No Windows, `npm install -g` instala tres arquivos para o mesmo comando:
+      um shim POSIX sem extensao, um `.cmd` e um `.ps1`. O `Get-Command` puro
+      devolve o `.ps1` primeiro, e `Process.Start` nao sabe executar script --
+      falha com "o sistema nao pode encontrar o arquivo especificado", que
+      parece ausencia do programa quando na verdade e o tipo errado de arquivo.
+
+      Filtrar por CommandType 'Application' devolve o `.cmd` ou o `.exe`, que e
+      o que a API de processo consegue lancar.
+
+      Devolve $null quando o comando realmente nao existe.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string]$Name)
+
+    $candidates = @(Get-Command $Name -All -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandType -eq 'Application' })
+
+    if ($candidates.Count -eq 0) { return $null }
+
+    # No Windows o `.cmd` e o wrapper que resolve o interpretador; prefira-o ao
+    # shim sem extensao, que e um script sh e falharia do mesmo jeito.
+    $preferred = $candidates | Where-Object { $_.Source -match '\.(cmd|bat|exe)$' } | Select-Object -First 1
+    if ($preferred) { return $preferred.Source }
+    return $candidates[0].Source
+}
+
+function Invoke-ClosedStdinProcess {
+    <#
+    .SYNOPSIS
+      Executa um processo externo com stdin FECHADO, capturando saida e exit code.
+
+    .DESCRIPTION
+      Fechar stdin nao e detalhe. No motor original, `codex exec` herdava o stdin
+      do terminal, ficava esperando entrada que nunca vinha e travava o loop
+      indefinidamente. A correcao la foi `</dev/null`; aqui e redirecionar e
+      fechar o stream antes de esperar o processo.
+
+      Devolve ExitCode e Output. Falha ao lancar o processo devolve exit 2:
+      nao conseguir rodar nunca e o mesmo que rodar e reprovar.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$FilePath,
+        [Parameter(Mandatory)] [string[]]$ArgumentList,
+        [Parameter(Mandatory)] [string]$WorkingDirectory,
+        [int]$TimeoutSeconds = 900,
+
+        # Texto entregue pela entrada padrao antes de ela ser fechada.
+        #
+        # Existe porque prompt multilinha NAO sobrevive como argumento de linha
+        # de comando no Windows: o `codex` instalado por npm e um wrapper .cmd,
+        # e o processador de lote corta o texto nas quebras de linha. O operario
+        # recebia um prompt truncado, nao encontrava a missao e respondia
+        # BLOCKED -- corretamente, porque de fato faltava a missao.
+        [string]$StdinContent = ''
+    )
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName               = $FilePath
+    $psi.WorkingDirectory       = $WorkingDirectory
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.RedirectStandardInput  = $true
+    $psi.UseShellExecute        = $false
+    foreach ($argument in $ArgumentList) { $psi.ArgumentList.Add($argument) }
+
+    try {
+        $process = [System.Diagnostics.Process]::Start($psi)
+    }
+    catch {
+        # `Launched = $false` e um campo proprio, e nao mais um valor especial
+        # de ExitCode. Sobrecarregar o exit code com "nao consegui lancar"
+        # repetiria o defeito que este motor existe para impedir: um numero que
+        # significa tres coisas, e um chamador que confunde ambiente quebrado
+        # com trabalho reprovado.
+        return [PSCustomObject]@{
+            ExitCode = $script:ExitCannotMeasure
+            Output   = "Falha ao iniciar '$FilePath': $($_.Exception.Message)"
+            Launched = $false
+            TimedOut = $false
+        }
+    }
+
+    # Escreve o conteudo, se houver, e fecha. Fechar e obrigatorio: no motor
+    # original o stdin herdado do terminal deixava o processo esperando entrada
+    # que nunca chegava, e o loop travava indefinidamente.
+    if (-not [string]::IsNullOrEmpty($StdinContent)) {
+        $process.StandardInput.Write($StdinContent)
+    }
+    $process.StandardInput.Close()
+
+    # Ler antes de esperar evita deadlock quando a saida enche o buffer do pipe.
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEndAsync()
+
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+        try { $process.Kill($true) } catch { }
+        return [PSCustomObject]@{
+            ExitCode = $script:ExitCannotMeasure
+            Output   = "Processo excedeu $TimeoutSeconds s e foi encerrado. Nao foi possivel medir."
+            Launched = $true
+            TimedOut = $true
+        }
+    }
+
+    $output = ($stdout.GetAwaiter().GetResult() + $stderr.GetAwaiter().GetResult())
+    return [PSCustomObject]@{
+        ExitCode = $process.ExitCode
+        Output   = $output
+        Launched = $true
+        TimedOut = $false
+    }
+}
+
+function New-OperatorPrompt {
+    <#
+    .SYNOPSIS
+      Monta o prompt entregue ao operario.
+
+    .DESCRIPTION
+      Na primeira iteracao entrega a missao. Nas seguintes entrega tambem o log
+      de falha real do gate -- nao um resumo, e nao a opiniao do gerente sobre o
+      que deu errado. O operario corrige contra a saida da ferramenta.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$MissionText,
+        [Parameter(Mandatory)] [int]$Iteration,
+        [string]$FailureLog = ''
+    )
+
+    $builder = [System.Text.StringBuilder]::new()
+    [void]$builder.AppendLine('Voce e o OPERARIO. Implemente o minimo que faz os testes passarem.')
+    [void]$builder.AppendLine('Trabalhe apenas dentro deste worktree. Nao instale dependencia e nao acesse a rede.')
+    [void]$builder.AppendLine('Nao altere os testes de aceitacao. Se faltar algo que voce nao pode resolver, pare e explique.')
+    [void]$builder.AppendLine('')
+    [void]$builder.AppendLine('=== MISSAO ===')
+    [void]$builder.AppendLine($MissionText)
+
+    if ($Iteration -gt 1 -and -not [string]::IsNullOrWhiteSpace($FailureLog)) {
+        [void]$builder.AppendLine('')
+        [void]$builder.AppendLine("=== FALHA DA ITERACAO $($Iteration - 1) ===")
+        [void]$builder.AppendLine('Esta e a saida real do gate. Corrija contra ela, nao contra suposicao.')
+        [void]$builder.AppendLine('')
+        # Cauda basta: o erro relevante costuma estar no fim, e o inicio do log
+        # gastaria contexto do operario com ruido de inicializacao.
+        $tail = ($FailureLog -split "`n" | Select-Object -Last 60) -join "`n"
+        [void]$builder.AppendLine($tail)
+    }
+
+    return $builder.ToString()
+}
+
+function Test-WorktreeHasChanges {
+    <#
+    .SYNOPSIS
+      Verdadeiro se o worktree tem alteracao real em relacao ao HEAD.
+
+    .DESCRIPTION
+      Um GREEN com diff vazio nao e sucesso: significa que os gates ja passavam
+      antes do operario tocar em qualquer coisa, e portanto nao provaram nada
+      sobre o trabalho dele.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string]$WorktreePath)
+
+    $status = & git -C $WorktreePath status --porcelain 2>$null
+    return -not [string]::IsNullOrWhiteSpace(($status | Out-String))
+}
+
 Export-ModuleMember -Function @(
     'Get-RequiredMissionField'
     'Read-Mission'
@@ -263,4 +558,11 @@ Export-ModuleMember -Function @(
     'Invoke-Gate'
     'ConvertTo-GateStatus'
     'Test-IterationConsumed'
+    'Resolve-ExternalCommand'
+    'Invoke-ClosedStdinProcess'
+    'New-OperatorPrompt'
+    'Test-WorktreeHasChanges'
+    'ConvertTo-OraclePath'
+    'Get-OracleViolation'
+    'New-FilteredPatchArgument'
 )

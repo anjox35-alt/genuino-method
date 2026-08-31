@@ -16,204 +16,29 @@ import json
 import re
 import shutil
 import subprocess
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
-PASS = "PASS"
-FAIL = "FAIL"
-INDETERMINADO = "INDETERMINADO"
-
-# Diretorios que nunca sao varridos: sao gerados, nao autorais.
-IGNORED_DIRS = frozenset(
-    {
-        ".git",
-        "node_modules",
-        ".venv",
-        "venv",
-        "__pycache__",
-        ".pytest_cache",
-        ".ruff_cache",
-        "dist",
-        "build",
-        ".mypy_cache",
-    }
+from .core import (
+    BINARY_SUFFIXES,
+    FAIL,
+    IGNORED_DIRS,
+    INDETERMINADO,
+    PASS,
+    Finding,
+    GateResult,
+    iter_text_files,
+    read_lines,
 )
+from .secrets import FIXTURE_MARKER, PLACEHOLDER_HINTS, SECRET_RULES, scan_secrets
 
-# Extensoes binarias: varrer bytes por regex de texto produz ruido, nao achado.
-BINARY_SUFFIXES = frozenset(
-    {
-        ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".svg",
-        ".zip", ".gz", ".tar", ".7z", ".rar",
-        ".pdf", ".woff", ".woff2", ".ttf", ".otf", ".eot",
-        ".exe", ".dll", ".so", ".dylib", ".pyc", ".class", ".jar",
-        ".mp4", ".mp3", ".wav", ".avi", ".mov",
-    }
-)
-
-
-@dataclass
-class Finding:
-    """Uma ocorrencia concreta, ancorada em arquivo e linha."""
-
-    path: str
-    line: int
-    rule: str
-    excerpt: str
-
-
-@dataclass
-class GateResult:
-    """Veredito de um gate, com a evidencia que o sustenta."""
-
-    status: str
-    summary: str
-    findings: list[Finding] = field(default_factory=list)
-    limits: list[str] = field(default_factory=list)
-
-    def to_dict(self) -> dict:
-        return {
-            "status": self.status,
-            "summary": self.summary,
-            "findings": [
-                {
-                    "path": f.path,
-                    "line": f.line,
-                    "rule": f.rule,
-                    "excerpt": f.excerpt,
-                }
-                for f in self.findings
-            ],
-            "limits": self.limits,
-        }
-
-
-def iter_text_files(root: Path, extra_ignores: Iterable[str] = ()) -> list[Path]:
-    """Lista arquivos de texto sob `root`, pulando diretorios gerados."""
-    ignored = IGNORED_DIRS | set(extra_ignores)
-    out: list[Path] = []
-    if not root.exists():
-        return out
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if any(part in ignored for part in path.relative_to(root).parts):
-            continue
-        if path.suffix.lower() in BINARY_SUFFIXES:
-            continue
-        out.append(path)
-    return out
-
-
-def _read_lines(path: Path) -> list[str]:
-    try:
-        return path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return []
-
-
-# --------------------------------------------------------------------------
-# scan_secrets
-# --------------------------------------------------------------------------
-
-# Cada regra existe por um vazamento plausivel e concreto. Regra generica demais
-# gera ruido, e um gate ruidoso e desligado pelo time -- que e a pior falha.
-SECRET_RULES: Sequence[tuple[str, re.Pattern[str]]] = (
-    ("github-token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,}")),
-    ("github-pat-fine", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}")),
-    ("openai-key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}")),
-    ("anthropic-key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}")),
-    ("aws-access-key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
-    ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}")),
-    ("google-api-key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
-    ("private-key-block", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----")),
-    ("windows-user-path", re.compile(r"[A-Za-z]:\\\\?Users\\\\?[A-Za-z0-9._-]+", re.IGNORECASE)),
-    ("unix-home-path", re.compile(r"/(?:home|Users)/(?!runner\b)[A-Za-z0-9._-]+/")),
-)
-
-# Um placeholder nao e um segredo. Sem esta lista, o gate reprova a propria
-# documentacao e ensina o time a ignora-lo.
-PLACEHOLDER_HINTS = (
-    "example",
-    "placeholder",
-    "your-",
-    "xxxx",
-    "<token>",
-    "dummy",
-    "fake",
-    "redacted",
-    "changeme",
-    "sample",
-)
-
-
-# Marcador explicito para o unico caso legitimo de um segredo-formato aparecer
-# em arquivo versionado: a fixture que prova que este gate reprova.
-#
-# A alternativa seria isentar o diretorio de testes inteiro. Isso abriria um
-# ponto cego permanente: um segredo real vazado para dentro de tests/ passaria
-# sem ser visto. O marcador exige que quem escreveu a linha tenha declarado a
-# intencao naquela linha, e deixa a isencao auditavel por grep.
-FIXTURE_MARKER = "genuino:fixture"
-
-
-def _looks_like_placeholder(excerpt: str) -> bool:
-    low = excerpt.lower()
-    return any(hint in low for hint in PLACEHOLDER_HINTS)
-
-
-def _is_declared_fixture(lines: list[str], index: int) -> bool:
-    """Verdadeiro se a linha, ou a imediatamente anterior, carrega o marcador.
-
-    Aceitar a linha anterior permite marcar um bloco de texto multilinha sem
-    poluir o proprio literal.
-    """
-    if FIXTURE_MARKER in lines[index]:
-        return True
-    return index > 0 and FIXTURE_MARKER in lines[index - 1]
-
-
-def scan_secrets(root: Path, allow_paths: Sequence[str] = ()) -> GateResult:
-    """Procura segredo e caminho pessoal em arquivos versionaveis.
-
-    Caminho pessoal entra aqui porque este metodo publica em repositorio
-    publico: `C:\\Users\\<nome>` identifica a pessoa tao bem quanto um token.
-    """
-    findings: list[Finding] = []
-    allowed = tuple(allow_paths)
-
-    for path in iter_text_files(root):
-        rel = path.relative_to(root).as_posix()
-        if any(rel.startswith(a) for a in allowed):
-            continue
-        lines = _read_lines(path)
-        for index, line in enumerate(lines):
-            if _is_declared_fixture(lines, index):
-                continue
-            for rule, pattern in SECRET_RULES:
-                if not pattern.search(line):
-                    continue
-                excerpt = line.strip()[:200]
-                if _looks_like_placeholder(excerpt):
-                    continue
-                findings.append(
-                    Finding(path=rel, line=index + 1, rule=rule, excerpt=excerpt)
-                )
-
-    if findings:
-        return GateResult(
-            status=FAIL,
-            summary=f"{len(findings)} ocorrencia(s) de segredo ou caminho pessoal.",
-            findings=findings,
-        )
-    return GateResult(
-        status=PASS,
-        summary="Nenhum segredo ou caminho pessoal encontrado.",
-        limits=[
-            "Cobre apenas os padroes declarados em SECRET_RULES.",
-            "Ausencia de achado nao prova ausencia de segredo.",
-        ],
-    )
+__all__ = [
+    "BINARY_SUFFIXES", "FAIL", "INDETERMINADO", "IGNORED_DIRS", "PASS",
+    "Finding", "GateResult", "iter_text_files", "read_lines",
+    "FIXTURE_MARKER", "PLACEHOLDER_HINTS", "SECRET_RULES", "scan_secrets",
+    "BloatThresholds", "check_bloat", "scan_security", "validate_skill",
+]
 
 
 # --------------------------------------------------------------------------
@@ -342,7 +167,7 @@ def check_bloat(
 
     for path in files:
         rel = path.relative_to(root).as_posix()
-        lines = _read_lines(path)
+        lines = read_lines(path)
 
         if len(lines) > th.max_file_lines:
             findings.append(
@@ -425,23 +250,61 @@ _FUNC_START = re.compile(
 )
 
 
-def _find_long_functions(rel: str, lines: list[str], max_lines: int) -> list[Finding]:
-    """Aproxima o tamanho de funcao por indentacao e por chave de bloco.
+def _function_end(lines: list[str], start: int) -> int:
+    """Acha onde a funcao iniciada em `start` termina.
 
-    E heuristica, nao parser. Serve para apontar o candidato, nao para julgar.
+    Duas estrategias, porque as linguagens do projeto delimitam bloco de formas
+    diferentes:
+
+    - Chaves (PowerShell, JS, TS): conta abre e fecha ate balancear.
+    - Indentacao (Python): termina na primeira linha nao vazia cuja indentacao
+      volta ao nivel da declaracao ou acima.
+
+    A versao anterior usava "ate a proxima funcao", e isso produzia falso
+    positivo grosseiro: a ultima funcao de um arquivo engolia todo o codigo
+    top-level abaixo dela. Uma funcao de oito linhas era reportada com cento e
+    oitenta. Gate que acusa o inocente perde a autoridade de acusar o culpado.
+    """
+    header = lines[start]
+
+    if "{" in header:
+        depth = 0
+        for index in range(start, len(lines)):
+            depth += lines[index].count("{") - lines[index].count("}")
+            if depth <= 0 and index > start:
+                return index + 1
+            if depth == 0 and index == start and "}" in lines[index]:
+                return index + 1
+        return len(lines)
+
+    base_indent = len(header) - len(header.lstrip())
+    for index in range(start + 1, len(lines)):
+        line = lines[index]
+        if not line.strip():
+            continue
+        if len(line) - len(line.lstrip()) <= base_indent:
+            return index
+    return len(lines)
+
+
+def _find_long_functions(rel: str, lines: list[str], max_lines: int) -> list[Finding]:
+    """Aponta funcoes que passaram do teto de linhas.
+
+    E heuristica, nao parser. Serve para apontar o candidato a revisao, nao para
+    julgar o codigo.
     """
     out: list[Finding] = []
-    starts = [i for i, ln in enumerate(lines) if _FUNC_START.match(ln)]
-    for pos, start in enumerate(starts):
-        end = starts[pos + 1] if pos + 1 < len(starts) else len(lines)
-        length = end - start
+    for start, header in enumerate(lines):
+        if not _FUNC_START.match(header):
+            continue
+        length = _function_end(lines, start) - start
         if length > max_lines:
             out.append(
                 Finding(
                     path=rel,
                     line=start + 1,
                     rule="funcao-longa",
-                    excerpt=f"~{length} linhas (teto {max_lines}): {lines[start].strip()[:120]}",
+                    excerpt=f"~{length} linhas (teto {max_lines}): {header.strip()[:120]}",
                 )
             )
     return out
