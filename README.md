@@ -29,10 +29,10 @@ mcp.server.fastmcp.FastMCP  -> FAIL
 
 | Pasta | O que é | Estado |
 |---|---|---|
-| `mcp/` | Servidor MCP com os gates de verificação | funcional, 50 testes |
-| `engine/` | Motor do green loop em PowerShell 7 | funcional, 37 testes, GREEN de ponta a ponta |
+| `mcp/` | Servidor MCP com os gates de verificação | funcional, 82 testes |
+| `engine/` | Motor do green loop em PowerShell 7 | funcional, 73 testes, GREEN de ponta a ponta |
 | `method/` | Skill v4.5.0, contratos e referências | migrado, selado por SHA-256 |
-| `missions/` | Missões executáveis pelo loop | 1 (smoke de delegação) |
+| `missions/` | Missões executáveis pelo loop | 3 (smoke, selo, núcleo-01) |
 | `audits/` | Relatórios de auditoria e revisão | 2 |
 | `attic/` | Obsoletos preservados, com motivo registrado | vazio |
 
@@ -70,7 +70,8 @@ evidência em aprovação.
 | `verify_node_package` | confundir faixa declarada com versão resolvida |
 | `context7_query` | responder sobre lib de terceiro sem library-id resolvido |
 | `scan_secrets` | vazar segredo ou caminho pessoal para repositório público |
-| `scan_security` | vulnerabilidade, via semgrep local |
+| `scan_security` | vulnerabilidade, via semgrep local com regras vendorizadas |
+| `selftest_security` | ruleset esvaziado ou corrompido devolvendo PASS em silencio |
 | `check_bloat` | inflação: arquivo longo, função longa, bloco duplicado |
 | `validate_skill` | SKILL.md malformada |
 | `verify_publish` | publicar árvore que reprova em qualquer gate acima |
