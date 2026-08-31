@@ -55,6 +55,12 @@ param(
     [Parameter(Mandatory)] [string]$MissionPath,
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [ValidateRange(1, 20)] [int]$MaxIterations = 5,
+    # Comando do contra-auditor. O motor nao sabe o que ha dentro dele: le o
+    # exit code pelo mesmo contrato de tres faixas de todo o resto. Vazio
+    # desliga a etapa, e o veredito registra NOT_VERIFIED em vez de fingir que
+    # ela rodou.
+    [string]$AuditorCommand = 'engine/Invoke-Auditor.ps1',
+    [ValidateRange(60, 1800)] [int]$AuditorTimeoutSeconds = 420,
     [ValidateRange(30, 3600)] [int]$OperatorTimeoutSeconds = 420,
     [ValidateRange(10, 3600)] [int]$GateTimeoutSeconds = 600,
     [switch]$HumanApproved,
@@ -75,6 +81,12 @@ $script:state = [ordered]@{
     consumed  = 0
     worktrees = @()
     notes     = [System.Collections.Generic.List[string]]::new()
+
+    # Declarado aqui, e nao criado quando a etapa roda. Uma chave que so existe
+    # em caso de sucesso faz o `verdict.json` de um caminho de falha OMITIR o
+    # campo -- e campo ausente se le como "nao se aplica", quando o correto e
+    # "nao foi verificado". Nasce NOT_VERIFIED e so muda com medicao.
+    counterAudit = [ordered]@{ ran = $false; exit_code = $null; status = 'NOT_VERIFIED' }
 }
 
 function Write-Log { param([string]$m) Write-Host "[$((Get-Date).ToUniversalTime().ToString('HH:mm:ss'))] $m" }
@@ -346,6 +358,73 @@ try {
         $failed = @($gates | Where-Object { $_.ExitCode -ne 0 })
 
         if ($failed.Count -eq 0) {
+            # --- COUNTER-AUDIT -------------------------------------------------
+            # `genuino-implementation` posiciona esta etapa entre VERIFY e
+            # HANDOFF. Ate aqui ela era feita a mao, e os achados chegavam a uma
+            # conversa em vez de a `runs/`.
+            #
+            # O material carrega missao, ORACULO e patch. Mandar so a missao e o
+            # patch produz auditoria sobre a promessa e o produto, sem a regua:
+            # na primeira execucao manual o auditor declarou exatamente isso
+            # como limite -- nao podia dizer o que fora medido, so que um gate
+            # reportou zero.
+            $auditResult = $null
+            if (-not [string]::IsNullOrWhiteSpace($AuditorCommand)) {
+                $auditPath = Join-Path $RepoRoot $AuditorCommand
+                if (Test-Path -LiteralPath $auditPath) {
+                    $oracleText = ''
+                    foreach ($op in $oraclePaths) {
+                        $full = Join-Path $measTree $op
+                        if (Test-Path -LiteralPath $full) {
+                            foreach ($f in @(Get-ChildItem -LiteralPath $full -File -Recurse -EA SilentlyContinue)) {
+                                $oracleText += "`n--- $($f.Name) ---`n" + (Get-Content -LiteralPath $f.FullName -Raw)
+                            }
+                        }
+                    }
+                    $material = @(
+                        '===== MISSAO =====', $missionText,
+                        '', '===== ORACULO (o operario nao pode toca-lo) =====', $oracleText,
+                        '', '===== PATCH DO OPERARIO =====', (Get-Content -LiteralPath $patchFile -Raw),
+                        '', '===== GATES ====='
+                    ) -join "`n"
+                    foreach ($g in $gates) { $material += "`n$($g.Name): exit=$($g.ExitCode) [$($g.Status)]" }
+
+                    Write-Log 'Contra-auditoria do veredito (COUNTER-AUDIT).'
+                    $pwshPath = Resolve-ExternalCommand -Name 'pwsh'
+                    $auditRun = Invoke-ClosedStdinProcess -FilePath $pwshPath -WorkingDirectory $RepoRoot `
+                        -ArgumentList @('-NoProfile', '-File', $auditPath) `
+                        -StdinContent $material -TimeoutSeconds $AuditorTimeoutSeconds
+                    Set-Content -LiteralPath (Join-Path $iterDir 'counter-audit.log') -Value $auditRun.Output -Encoding utf8
+
+                    $auditResult = [ordered]@{
+                        ran       = [bool]$auditRun.Launched
+                        exit_code = $auditRun.ExitCode
+                        status    = switch ($auditRun.ExitCode) {
+                            0 { 'SUSTENTADO' }
+                            1 { 'REFUTADO' }
+                            default { 'NOT_VERIFIED' }
+                        }
+                    }
+                    Write-Log "  counter-audit: exit=$($auditRun.ExitCode) [$($auditResult.status)]"
+
+                    # Refutacao com evidencia derruba o GREEN. O motor nao decide
+                    # quem tem razao -- escala ao humano, que e quem pode.
+                    if ($auditRun.ExitCode -eq 1) {
+                        $script:state.notes.Add('COUNTER-AUDIT refutou o veredito; ver counter-audit.log.')
+                        Stop-Loop $EXIT_RED 'REFUTADO: a contra-auditoria derrubou o GREEN. Nao ha merge automatico.'
+                    }
+                }
+                else {
+                    $auditResult = [ordered]@{ ran = $false; exit_code = $null; status = 'NOT_VERIFIED' }
+                    Write-Log "  counter-audit: comando nao encontrado ('$AuditorCommand'). NOT_VERIFIED."
+                }
+            }
+            else {
+                $auditResult = [ordered]@{ ran = $false; exit_code = $null; status = 'NOT_VERIFIED' }
+                Write-Log '  counter-audit: desligado por configuracao. NOT_VERIFIED.'
+            }
+            $script:state.counterAudit = $auditResult
+
             $script:state.verdict = 'GREEN'; $script:state.exitCode = $EXIT_GREEN
             Copy-Item -LiteralPath $patchFile -Destination (Join-Path $runDir 'diff.patch') -Force
             Write-Log "GREEN na iteracao $iteration."
@@ -389,6 +468,7 @@ finally {
         base_commit    = if (Get-Variable baseCommit -Scope 0 -EA SilentlyContinue) { $baseCommit } else { $null }
         oracle_paths   = $oraclePaths
         write_set      = $writeSet
+        counter_audit  = if ($script:state.counterAudit) { $script:state.counterAudit } else { [ordered]@{ ran = $false; exit_code = $null; status = 'NOT_VERIFIED' } }
         dry_run        = [bool]$DryRun
         human_decision = $admission.HumanDecision
         kept_worktrees = [bool]$KeepWorktree
