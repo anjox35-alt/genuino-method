@@ -440,3 +440,19 @@ Describe 'Invoke-ClosedStdinProcess -- encoding dos fluxos' {
         $r.Output | Should -Match 'SEM-BOM'
     }
 }
+
+Describe 'Invoke-ClosedStdinProcess -- evidencia no timeout' {
+
+    It 'preserva a saida produzida antes do encerramento' {
+        # Um timeout devolvia apenas a propria mensagem de timeout, e apagava a
+        # unica pista sobre onde o processo estava quando o tempo acabou.
+        $r = Invoke-ClosedStdinProcess -FilePath (Resolve-ExternalCommand -Name 'python') `
+            -WorkingDirectory $PSScriptRoot `
+            -ArgumentList @('-c', 'import sys,time; sys.stdout.write("MARCA-ANTES-DO-TIMEOUT"); sys.stdout.flush(); time.sleep(30)') `
+            -TimeoutSeconds 3
+        $r.TimedOut | Should -BeTrue
+        $r.ExitCode | Should -Be 2
+        $r.Output   | Should -Match 'MARCA-ANTES-DO-TIMEOUT'
+        $r.Output   | Should -Match 'excedeu'
+    }
+}

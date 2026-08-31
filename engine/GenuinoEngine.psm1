@@ -713,9 +713,34 @@ function Invoke-ClosedStdinProcess {
 
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
         try { $process.Kill($true) } catch { }
+
+        # Matar o processo fecha os pipes, e isso completa as leituras
+        # assincronas iniciadas acima. Esperar por elas recupera tudo que o
+        # processo chegou a produzir ANTES de ser morto.
+        #
+        # Sem isto, um timeout devolvia 65 bytes -- so a propria mensagem de
+        # timeout -- e apagava a unica pista sobre onde o operario estava
+        # quando o tempo acabou. Perder a evidencia justamente no caso que mais
+        # precisa dela e o oposto do que este motor existe para fazer.
+        #
+        # A espera e curta e tolerante: se o pipe nao fechar, o cabecalho sai
+        # sozinho. Uma recuperacao de evidencia nao pode virar um segundo
+        # travamento.
+        $parcial = ''
+        try {
+            if ($stdout.Wait(5000)) { $parcial += $stdout.Result }
+            if ($stderr.Wait(5000)) { $parcial += $stderr.Result }
+        }
+        catch { }
+
+        $cabecalho = "Processo excedeu $TimeoutSeconds s e foi encerrado. Nao foi possivel medir."
+        if (-not [string]::IsNullOrWhiteSpace($parcial)) {
+            $cabecalho = "$cabecalho`n`n--- saida parcial, ate o encerramento ---`n$parcial"
+        }
+
         return [PSCustomObject]@{
             ExitCode = $script:ExitCannotMeasure
-            Output   = "Processo excedeu $TimeoutSeconds s e foi encerrado. Nao foi possivel medir."
+            Output   = $cabecalho
             Launched = $true
             TimedOut = $true
         }
