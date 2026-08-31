@@ -49,7 +49,7 @@ oraculo antes de ele virar contrato. O registro esta em
 WRITE_SET: mcp/src/genuino_mcp/gates.py
 ORACULO: mcp/tests/
 
-TEST_CMD: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline python -m pytest tests/test_gates.py -q --basetemp=.pytest-tmp; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff check .; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff format --check .; exit $LASTEXITCODE
+TEST_CMD: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline python -m pytest tests/test_gates.py -q --basetemp="$env:TEMP/genuino-pytest-$PID"; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff check .; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff format --check .; exit $LASTEXITCODE
 
 FRONTEIRA: um humano roda o gate de publicacao sobre a arvore inteira, antes de um push, e le o relatorio
 GATE_DA_FRONTEIRA: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline python -m genuino_mcp.check_tree ..; exit $LASTEXITCODE
@@ -94,15 +94,24 @@ intermitente e pior que bloqueio constante, porque produz `exit 2` sem padrao.
 casos. Isso nao contorna o controle de seguranca: usa um caminho que ele ja
 autoriza. O operario recusou explicitamente contornar, e estava certo.
 
-### Por que `--basetemp=.pytest-tmp`
+### Por que `--basetemp` fora do repo e unico por processo
 
 O `tmp_path` do pytest escreve em `%TEMP%/pytest-of-<usuario>`, que o gerente ja
 criou nas proprias execucoes. O operario escreve em TEMP, mas nao dentro de um
 diretorio preexistente com outro dono: `PermissionError [WinError 5]`.
 
-`.pytest-tmp/` vive no worktree e esta no `.gitignore`. Isso importa: o motor
-roda `git add -A` antes de comparar, e um diretorio nao ignorado ali viraria
-violacao de contrato nomeada em vez de arquivo temporario inofensivo.
+A primeira tentativa apontou o basetemp para `.pytest-tmp/` DENTRO do worktree,
+ignorado pelo git. Isso tornou o oraculo INSATISFAZIVEL: `iter_text_files` lista
+arquivos com `git ls-files --others --exclude-standard`, entao com as fixtures
+num diretorio ignorado dentro do repositorio `scan_secrets` e `check_bloat`
+deixam de enxerga-las, e seis testes que exigem `FAIL` recebem `PASS`.
+
+Medido nos dois lados: basetemp dentro do repo da exit 1 por esse motivo, fora
+do repo da exit 0. O operario gastou duas iteracoes contra esse contrato
+impossivel e entregou o patch certo nas duas. O defeito era do gerente.
+
+Um caminho unico por processo evita a colisao de ACL, porque cada execucao cria
+o seu em vez de reusar um diretorio preexistente com outro dono.
 
 ## STOP CONDITIONS
 
