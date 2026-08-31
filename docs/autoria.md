@@ -29,13 +29,29 @@ proprietário do que está aqui.
 | Operário | Codex CLI (GPT-5) | `codex-cli 0.151.0` | Implementação em worktree isolado; revisão independente do motor |
 | Auditor | Gemini, via `gemini-cli` | `0.57.0` | Auditoria de premissas; confirmação dos achados do Codex |
 
-**Estado do auditor em 2026-08-31:** o `gemini-cli` deixou de funcionar. O
-Google encerrou o *Gemini Code Assist for individuals* para esse cliente
-(`IneligibleTierError: UNSUPPORTED_CLIENT`) e direciona para o Antigravity, que
-é aplicação Electron sem CLI headless — não invocável a partir do motor.
+**O auditor mudou em 2026-08-31.** O `gemini-cli` deixou de funcionar: o Google
+encerrou o *Gemini Code Assist for individuals* para esse cliente
+(`IneligibleTierError: UNSUPPORTED_CLIENT`) e direciona para o Antigravity, que é
+aplicação Electron sem CLI headless — não invocável a partir do motor.
 
-A auditoria por terceiro modelo, hoje, é **manual**. Está registrado em
-`docs/limites.md`.
+O papel foi para o **Nemotron 3 Ultra**, servido pela NVIDIA e chamado por
+`opencode run`:
+
+| Papel | Ferramenta | Versão / modelo | Por quê |
+|---|---|---|---|
+| Auditor | OpenCode + NVIDIA NIM | `opencode 1.18.25`, `nvidia/nemotron-3-ultra-550b-a55b` | Headless, `--format json`, tier gratuito, e família de modelo distinta de Claude e de GPT |
+
+A configuração está versionada em `opencode.json`, sem segredo: a chave entra
+por `{env:NVIDIA_API_KEY}`, que o autor define na própria máquina.
+
+**Teste de aceitação do papel.** Antes de adotar o auditor, ele recebeu o
+oráculo tautológico do commit `642f710` — o mesmo que passou despercebido pelo
+gerente. Devolveu `INSUFICIENTE` e nomeou a causa exata: numa árvore sem
+`.semgrep/rules`, `selftest_security` devolve 2 e mascara o resultado do selo,
+de modo que a asserção `!= 0` passa sem que o selo tenha sido consultado.
+
+Um auditor que não encontra nada não é auditor. Este encontrou, no primeiro
+caso, o defeito que custou uma sessão.
 
 ## Contribuição por commit
 

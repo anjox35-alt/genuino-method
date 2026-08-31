@@ -190,23 +190,25 @@ O que fecharia: versionar um `verdict.json` sanitizado por missão, com os
 hashes, os exit codes e os caminhos reduzidos a marcadores, deixando fora
 apenas o patch e o transitório. Não está feito.
 
-## 14. O terceiro modelo, hoje, nao e invocavel pelo motor
+## 14. O auditor independente e de terceiro, mas nao e imparcial por construcao
 
-O arranjo de tres papeis em `docs/papeis.md` supoe um auditor independente do
-gerente e do operario. Em 2026-08-31 esse auditor deixou de existir na pratica:
+O auditor hoje e o Nemotron 3 Ultra, servido pela NVIDIA e chamado via
+`opencode run`. Ele nao compartilha familia de modelo com o gerente (Claude) nem
+com o operario (Codex), o que e a coisa mais proxima de independencia real que
+este arranjo alcanca.
 
-- O `gemini-cli` (0.57.0) devolve `IneligibleTierError: UNSUPPORTED_CLIENT`. O
-  Google encerrou o *Gemini Code Assist for individuals* para esse cliente.
-- O Antigravity, para onde a mensagem de erro direciona, e aplicacao Electron.
-  Nao tem CLI headless, entao o motor nao consegue chama-lo.
+O que isso **nao** garante:
 
-Consequencia: a etapa de auditoria por terceiro modelo virou **manual**. Um
-humano abre o aplicativo, cola o material e le a resposta. Isso funciona, e nao
-escala, e nao entra no `verdict.json` como as demais medicoes.
-
-Enquanto durar, `docs/papeis.md` descreve um arranjo que o motor nao executa
-sozinho. A separacao autor/juiz continua real para o operario e continua
-inexistente para o gerente.
+- Um modelo que erra de forma diferente ainda erra. Independencia reduz modo de
+  falha compartilhado; nao produz verdade.
+- O prompt do auditor e escrito pelo gerente. Quem formula a pergunta limita as
+  respostas possiveis -- e o limite 1 reaparecendo num degrau acima.
+- O tier gratuito da NVIDIA e para desenvolvimento e prototipagem. Servir
+  usuario final e producao e exige licenca AI Enterprise. Este motor roda em
+  desenvolvimento; qualquer uso do NIM dentro de um produto publicado sai do que
+  a licenca permite.
+- A latencia observada foi de ~66s por auditoria, e o limite e de ~40 req/min.
+  Auditar cada iteracao de cada missao muda o custo de tempo do loop.
 
 ---
 
@@ -222,6 +224,7 @@ Um limite sai desta lista quando deixa de existir. Estes saíram:
 | `.Trim()` colapsava `foo`, `" foo"` e `"foo "` num nome só | `Split-GitPathLine`, que remove apenas o `
 ` do CRLF | `InvokeGreenLoop.Tests.ps1`, bloco `Split-GitPathLine` |
 | `check_bloat` reportava "nenhum sintoma em 18 arquivos" sem dizer quais: lia-se como "o repositório", enquanto um markdown de 606 KB passava ao lado | O sumário nomeia as extensões medidas e declara o que ficou fora | `mcp/src/genuino_mcp/gates.py`, retorno de `check_bloat` |
+| O terceiro modelo nao era invocavel pelo motor: `gemini-cli` devolvia `IneligibleTierError` e o Antigravity e app Electron sem CLI headless. A auditoria por terceiro virou manual e nao chegava ao `verdict.json` | `opencode run --model nvidia-nim/...`, com o Nemotron 3 Ultra servido pela NVIDIA no tier gratuito | Configuracao versionada em `opencode.json`. No teste de aceitacao do papel, o auditor recebeu o oraculo tautologico do commit `642f710` e devolveu INSUFICIENTE, nomeando a causa correta: `selftest_security` retorna 2 numa arvore sem `.semgrep/rules`, mascarando o resultado do selo |
 
 ---
 

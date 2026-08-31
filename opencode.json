@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "nvidia-nim": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "NVIDIA NIM",
+      "options": {
+        "baseURL": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "{env:NVIDIA_API_KEY}"
+      },
+      "models": {
+        "nvidia/nemotron-3-ultra-550b-a55b": {
+          "name": "Nemotron 3 Ultra (auditor)",
+          "limit": { "context": 128000, "output": 8192 }
+        },
+        "moonshotai/kimi-k3": {
+          "name": "Kimi K3 (auditor reserva)",
+          "limit": { "context": 128000, "output": 8192 }
+        }
+      }
+    }
+  }
+}
