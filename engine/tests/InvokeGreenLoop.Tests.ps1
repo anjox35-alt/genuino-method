@@ -56,7 +56,7 @@ BeforeAll {
 
     $script:Sandboxes = [System.Collections.Generic.List[string]]::new()
     function New-Sandbox {
-        $p = Join-Path $env:TEMP "greenloop-e2e-$(Get-Random)"
+        $p = Join-Path ([IO.Path]::GetTempPath()) "greenloop-e2e-$(Get-Random)"
         $script:Sandboxes.Add($p)
         return (New-TestRepo -Root $p)
     }
