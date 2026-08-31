@@ -450,3 +450,30 @@ def test_scan_respeita_gitignore_quando_ha_repositorio(tmp_path: Path) -> None:
     )
     (tmp_path / "app.py").write_text("print('ok')\n", encoding="utf-8")
     assert gates.scan_secrets(tmp_path).status == gates.PASS
+
+
+# --------------------------------------------------------------------------
+# scan_security e selftest
+# --------------------------------------------------------------------------
+
+
+def test_scan_security_indeterminado_sem_regras_vendorizadas(tmp_path: Path) -> None:
+    """Ausencia de regras nao e ausencia de vulnerabilidade."""
+    result = gates.scan_security(tmp_path)
+    assert result.status == gates.INDETERMINADO
+    assert result.status != gates.PASS
+
+
+def test_selftest_indeterminado_sem_diretorio(tmp_path: Path) -> None:
+    result = gates.selftest_security(tmp_path)
+    assert result.status == gates.INDETERMINADO
+
+
+def test_selftest_exige_os_dois_arquivos_de_controle(tmp_path: Path) -> None:
+    """Só o inseguro nao basta: sem o seguro nao da para medir falso positivo."""
+    d = tmp_path / ".semgrep" / "selftest"
+    d.mkdir(parents=True)
+    (d / "insecure.ts").write_text("eval(userInput);\n", encoding="utf-8")
+    result = gates.selftest_security(tmp_path)
+    assert result.status == gates.INDETERMINADO
+    assert "secure" in result.summary

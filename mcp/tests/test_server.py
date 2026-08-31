@@ -24,6 +24,7 @@ EXPECTED_TOOLS = {
     "verify_node_package",
     "context7_query",
     "verify_publish",
+    "selftest_security",
 }
 
 

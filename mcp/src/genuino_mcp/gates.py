@@ -37,7 +37,8 @@ __all__ = [
     "BINARY_SUFFIXES", "FAIL", "INDETERMINADO", "IGNORED_DIRS", "PASS",
     "Finding", "GateResult", "iter_text_files", "read_lines",
     "FIXTURE_MARKER", "PLACEHOLDER_HINTS", "SECRET_RULES", "scan_secrets",
-    "BloatThresholds", "check_bloat", "scan_security", "validate_skill",
+    "BloatThresholds", "check_bloat", "scan_security", "selftest_security",
+    "validate_skill",
 ]
 
 
@@ -46,8 +47,25 @@ __all__ = [
 # --------------------------------------------------------------------------
 
 
-def scan_security(root: Path, config: str = "auto", timeout: int = 300) -> GateResult:
-    """Delega ao semgrep local. Sem semgrep, o veredito e INDETERMINADO."""
+# Regras vendorizadas, versionadas junto com o codigo.
+#
+# `--config auto` baixa o ruleset do servidor a cada execucao, e o semgrep
+# recusa essa combinacao com `--metrics=off`: "Cannot create auto config when
+# metrics are off". O gate ficava permanentemente INDETERMINADO -- honesto, mas
+# inutil.
+#
+# Vendorizar resolve os dois problemas de uma vez. Um gate cujo conteudo chega
+# da rede em tempo de execucao nao e reproduzivel: a mesma arvore passa hoje e
+# reprova amanha sem que uma linha mude. E `--metrics=off` deixa de conflitar,
+# porque nao ha config remota a resolver.
+VENDORED_RULES = ".semgrep/rules"
+
+
+def scan_security(root: Path, config: str | None = None, timeout: int = 300) -> GateResult:
+    """Delega ao semgrep local, com regras vendorizadas no repositorio.
+
+    Sem semgrep, ou sem regras, o veredito e INDETERMINADO -- nunca PASS.
+    """
     binary = shutil.which("semgrep")
     if binary is None:
         return GateResult(
@@ -56,13 +74,52 @@ def scan_security(root: Path, config: str = "auto", timeout: int = 300) -> GateR
             limits=["Instale semgrep para que este gate produza veredito."],
         )
 
+    if config is None:
+        vendored = root / VENDORED_RULES
+        if not vendored.is_dir():
+            return GateResult(
+                status=INDETERMINADO,
+                summary=(
+                    f"Regras vendorizadas ausentes em {VENDORED_RULES}. "
+                    "Nao foi possivel medir."
+                ),
+                limits=[
+                    "Ausencia de regras nao e ausencia de vulnerabilidade.",
+                    f"Vendorize um ruleset em {VENDORED_RULES} e declare a procedencia.",
+                ],
+            )
+        config = str(vendored)
+
+    # `.semgrep/` sai do escaneamento por duas razoes distintas:
+    #
+    #  - `rules/` contem os PADROES de deteccao. Escanear a regra que procura
+    #    "chave PGP" faz o semgrep encontrar a propria regra e reportar como
+    #    achado. Ruido garantido, em todo run.
+    #  - `selftest/insecure.ts` e vulneravel DE PROPOSITO: ele existe para provar
+    #    que o gate reprova. Contar isso como achado do projeto seria confundir
+    #    o teste do gate com um defeito do produto.
+    #
+    # O selftest continua sendo verificado -- por `selftest_security`, que roda
+    # justamente sobre ele e exige a reprovacao.
+    return _run_semgrep(binary, config, root, timeout, exclude=".semgrep")
+
+
+def _run_semgrep(
+    binary: str,
+    config: str,
+    target: Path,
+    timeout: int,
+    exclude: str | None,
+) -> GateResult:
+    """Executa o semgrep sobre um alvo e traduz a saida para o contrato."""
+    cmd = [binary, "--config", config, "--json", "--quiet", "--metrics=off"]
+    if exclude:
+        cmd += ["--exclude", exclude]
+    cmd.append(str(target))
+
     try:
         proc = subprocess.run(  # noqa: S603 - binario resolvido via which
-            [binary, "--config", config, "--json", "--quiet", "--metrics=off", str(root)],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
+            cmd, capture_output=True, text=True, timeout=timeout, check=False
         )
     except subprocess.TimeoutExpired:
         return GateResult(
@@ -76,6 +133,82 @@ def scan_security(root: Path, config: str = "auto", timeout: int = 300) -> GateR
         )
 
     return _interpret_semgrep(proc, config)
+
+
+def selftest_security(root: Path, timeout: int = 300) -> GateResult:
+    """Prova que o gate de seguranca ainda reprova o que deve reprovar.
+
+    Um gate que so foi visto aprovando nao foi testado -- foi acompanhado. Este
+    selftest roda o mesmo semgrep, com as mesmas regras, sobre dois arquivos de
+    controle:
+
+        .semgrep/selftest/insecure.*   precisa REPROVAR
+        .semgrep/selftest/secure.*     precisa PASSAR
+
+    Se o ruleset for esvaziado, corrompido ou substituido por um que nao detecta
+    nada, o scan normal continuaria devolvendo PASS em silencio. Este selftest e
+    o que impede esse PASS de ser lido como seguranca.
+    """
+    selftest_dir = root / ".semgrep" / "selftest"
+    if not selftest_dir.is_dir():
+        return GateResult(
+            status=INDETERMINADO,
+            summary="Diretorio de selftest ausente. O gate de seguranca nao foi verificado.",
+        )
+
+    insecure = sorted(selftest_dir.glob("insecure.*"))
+    secure = sorted(selftest_dir.glob("secure.*"))
+    if not insecure or not secure:
+        return GateResult(
+            status=INDETERMINADO,
+            summary="Selftest precisa de um arquivo 'insecure.*' e um 'secure.*'.",
+        )
+
+    # Aponta o semgrep DIRETO para o diretorio de selftest.
+    #
+    # Nao da para reaproveitar `scan_security` aqui: ele exclui `.semgrep/`, que
+    # e justamente onde o selftest vive. Chamar o scan normal faria o selftest
+    # medir uma arvore da qual ele proprio foi removido, e reportar "o ruleset
+    # nao detecta nada" -- um falso alarme causado pela propria exclusao.
+    ruim = _run_semgrep(
+        binary=shutil.which("semgrep") or "semgrep",
+        config=str(root / VENDORED_RULES),
+        target=selftest_dir,
+        timeout=timeout,
+        exclude=None,
+    )
+    if ruim.status == INDETERMINADO:
+        return GateResult(
+            status=INDETERMINADO,
+            summary=f"Nao foi possivel rodar o selftest: {ruim.summary}",
+        )
+
+    achados_insecure = [f for f in ruim.findings if "insecure" in f.path]
+    achados_secure = [f for f in ruim.findings if "insecure" not in f.path]
+
+    problemas: list[str] = []
+    if not achados_insecure:
+        problemas.append("o arquivo inseguro NAO foi reprovado: o ruleset nao esta detectando")
+    if achados_secure:
+        problemas.append(
+            f"o arquivo seguro foi reprovado: {len(achados_secure)} falso(s) positivo(s)"
+        )
+
+    if problemas:
+        return GateResult(
+            status=FAIL,
+            summary="Selftest de seguranca reprovou: " + "; ".join(problemas),
+            findings=achados_insecure + achados_secure,
+        )
+
+    return GateResult(
+        status=PASS,
+        summary=(
+            f"Selftest de seguranca OK: o arquivo inseguro produziu "
+            f"{len(achados_insecure)} achado(s) e o seguro, nenhum."
+        ),
+        limits=["Prova que o ruleset detecta os casos de controle, nao que cobre tudo."],
+    )
 
 
 def _interpret_semgrep(proc: subprocess.CompletedProcess[str], config: str) -> GateResult:

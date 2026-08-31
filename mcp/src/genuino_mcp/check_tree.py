@@ -18,7 +18,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from .gates import FAIL, INDETERMINADO, PASS, GateResult, check_bloat, scan_secrets
+from .gates import (
+    FAIL,
+    INDETERMINADO,
+    PASS,
+    GateResult,
+    check_bloat,
+    scan_secrets,
+    selftest_security,
+)
 
 
 def _render(name: str, result: GateResult) -> None:
@@ -47,9 +55,21 @@ def main(argv: list[str] | None = None) -> int:
     #
     # A varredura de segredos continua valendo para method/. Selado ou nao,
     # nada com formato de credencial entra num repositorio publico.
+    # `.semgrep/` e isento da varredura de segredos porque os arquivos de regra
+    # CONTEM os padroes que definem um segredo -- inclusive o cabecalho literal
+    # de uma chave privada. Escanea-los faz o detector encontrar a propria
+    # definicao e reportar como vazamento.
+    #
+    # A isencao e estreita e o diretorio nao fica sem verificacao: ele tem gate
+    # proprio em `selftest_security`, que exige que essas mesmas regras
+    # continuem detectando os casos de controle.
     results = {
-        "scan_secrets": scan_secrets(root),
+        "scan_secrets": scan_secrets(root, allow_paths=(".semgrep/",)),
         "check_bloat": check_bloat(root, skip_paths=("method/",)),
+        # O selftest roda ANTES de qualquer scan valer alguma coisa: um ruleset
+        # vazio faria o scan devolver PASS em silencio, e PASS sem deteccao e
+        # indistinguivel de seguranca real para quem le o relatorio.
+        "selftest_security": selftest_security(root),
     }
     for name, result in results.items():
         _render(name, result)

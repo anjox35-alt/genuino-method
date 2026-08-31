@@ -72,6 +72,24 @@ def scan_security(root: str, config: str = "auto") -> dict[str, Any]:
 
 
 @mcp.tool()
+def selftest_security(root: str) -> dict[str, Any]:
+    """Prova que o gate de seguranca ainda reprova o que deveria reprovar.
+
+    Roda o mesmo semgrep, com as mesmas regras, sobre dois arquivos de controle
+    em `.semgrep/selftest/`: um vulneravel de proposito, que precisa reprovar, e
+    um limpo, que precisa passar.
+
+    Sem isto, um ruleset esvaziado ou corrompido faria `scan_security` devolver
+    PASS em silencio -- e PASS sem deteccao e indistinguivel de seguranca real
+    para quem le o relatorio.
+
+    Args:
+        root: raiz do repositorio, onde vive `.semgrep/`.
+    """
+    return gates.selftest_security(_resolve(root)).to_dict()
+
+
+@mcp.tool()
 def check_bloat(
     root: str,
     max_file_lines: int = 600,
