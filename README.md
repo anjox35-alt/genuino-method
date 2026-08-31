@@ -29,11 +29,35 @@ mcp.server.fastmcp.FastMCP  -> FAIL
 
 | Pasta | O que é | Estado |
 |---|---|---|
-| `mcp/` | Servidor MCP com os gates de verificação | funcional, 35 testes |
-| `method/` | O método: skill, contratos, referências | em migração |
-| `engine/` | Motor do green loop em PowerShell 7 | em porte |
-| `tools/` | Utilitários de selo e publicação | em migração |
-| `attic/` | Obsoletos preservados, com motivo registrado | — |
+| `mcp/` | Servidor MCP com os gates de verificação | funcional, 50 testes |
+| `engine/` | Motor do green loop em PowerShell 7 | funcional, 37 testes, GREEN de ponta a ponta |
+| `method/` | Skill v4.5.0, contratos e referências | migrado, selado por SHA-256 |
+| `missions/` | Missões executáveis pelo loop | 1 (smoke de delegação) |
+| `audits/` | Relatórios de auditoria e revisão | 2 |
+| `attic/` | Obsoletos preservados, com motivo registrado | vazio |
+
+## Os três papéis
+
+O método separa quem escreve de quem mede, e de quem audita quem mede.
+
+| Papel | Quem | Sandbox | Escreve |
+|---|---|---|---|
+| Gerente | Claude Code | árvore principal | testes de aceitação, kernel, merge |
+| Operário | Codex | worktree descartável, sem rede | implementação do produto |
+| Revisor | Codex ou Gemini | somente leitura | nada |
+
+A separação está no sandbox, não na promessa. Detalhes e limitações em
+[docs/papeis.md](docs/papeis.md).
+
+**O operário escreve num worktree; os gates rodam em outro.** O patch é gerado
+excluindo os caminhos declarados como `ORACULO` e aplicado num worktree limpo do
+commit-base congelado. Adulterar o teste de aceitação não compra nada — e fica
+registrado como violação nomeada.
+
+Esse desenho não foi projetado assim desde o início: ele veio de uma revisão
+adversarial que encontrou 17 defeitos na primeira versão, todos confirmados por
+um segundo modelo de forma independente. Os relatórios estão em
+[audits/2026-08-31-revisao-codex/](audits/2026-08-31-revisao-codex/).
 
 ## Os gates
 

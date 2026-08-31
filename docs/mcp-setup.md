@@ -1,12 +1,28 @@
 # Registro dos servidores MCP
 
-O arquivo `.mcp.json` na raiz registra dois servidores **lado a lado**, não
-aninhados. Cada um responde uma pergunta diferente.
+O arquivo `.mcp.json` na raiz registra três servidores **lado a lado**, não
+aninhados. Cada um responde uma pergunta diferente, e nenhum responde a do outro.
 
 | Servidor | Responde | Precisa de rede | Precisa de chave |
 |---|---|---|---|
 | `genuino` | "isto passa nos gates?" | não | não |
 | `context7` | "qual é a API atual desta biblioteca?" | sim | sim, gratuita |
+| `codebase-memory` | "quem chama isto? o que quebra se eu mudar?" | não | não |
+
+## codebase-memory
+
+Grafo de conhecimento do código, servido por um binário nativo. Responde
+consultas estruturais — chamadores, dependências, código morto, impacto de uma
+mudança — sem reler os arquivos a cada pergunta.
+
+Entra aqui por um motivo mensurável: o operário relia o mesmo código a cada
+iteração do loop. Consulta estrutural custa uma fração disso.
+
+O instalador oficial configura Gemini CLI, Antigravity, VS Code e Copilot
+automaticamente, mas **não** o Claude Code — por isso o registro acima é manual.
+O binário fica em `%LOCALAPPDATA%\Programs\codebase-memory-mcp` e o instalador o
+adiciona ao PATH do usuário; uma sessão aberta antes da instalação não o
+encontra até ser reiniciada.
 
 ## Por que lado a lado, e não um dentro do outro
 
