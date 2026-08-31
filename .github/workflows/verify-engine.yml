@@ -1,0 +1,87 @@
+name: verify-engine
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "engine/**"
+      - ".github/workflows/verify-engine.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "engine/**"
+      - ".github/workflows/verify-engine.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pester:
+    name: pester (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # O motor e PowerShell 7, que e multiplataforma. Rodar nos dois sistemas
+        # e o que impede uma dependencia acidental de Windows entrar sem ser
+        # vista -- separador de caminho, fim de linha, executavel so-Windows.
+        os: [ubuntu-latest, windows-latest]
+
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: engine
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Report PowerShell version
+        run: $PSVersionTable | Format-List
+
+      # Versao minima fixada: o Windows traz um Pester 3.x legado cuja sintaxe
+      # e incompativel. Sem o piso, o job falharia so no runner Windows, com
+      # erro de parser que nao parece erro de versao.
+      - name: Install Pester
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser -Force -SkipPublisherCheck
+          (Get-Module Pester -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).Version
+
+      - name: Run Pester
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module Pester -MinimumVersion 5.0 -Force
+          $result = Invoke-Pester -Path ./tests -Output Detailed -PassThru
+          "passed=$($result.PassedCount) failed=$($result.FailedCount)"
+          if ($result.FailedCount -gt 0) { exit 1 }
+          if ($result.PassedCount -eq 0) {
+            # Zero teste executado nao e sucesso. Um erro de caminho faria a
+            # suite "passar" sem ter rodado nada.
+            Write-Error 'Nenhum teste foi executado.'
+            exit 2
+          }
+
+  engine-required:
+    name: engine-required
+    needs: [pester]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert the matrix succeeded
+        env:
+          PESTER_RESULT: ${{ needs.pester.result }}
+        run: |
+          echo "pester=$PESTER_RESULT"
+          if [ "$PESTER_RESULT" != "success" ]; then
+            echo "::error::A suite Pester nao passou."
+            exit 1
+          fi
