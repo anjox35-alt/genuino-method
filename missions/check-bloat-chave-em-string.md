@@ -49,7 +49,7 @@ oraculo antes de ele virar contrato. O registro esta em
 WRITE_SET: mcp/src/genuino_mcp/gates.py
 ORACULO: mcp/tests/
 
-TEST_CMD: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline python -m pytest tests/test_gates.py -q --basetemp="$env:TEMP/genuino-pytest-$PID"; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff check .; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff format --check .; exit $LASTEXITCODE
+TEST_CMD: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline python -m pytest tests/test_gates.py tests/test_bloat_strings.py -q --basetemp="$env:TEMP/genuino-pytest-$PID"; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff check .; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff format --check .; exit $LASTEXITCODE
 
 FRONTEIRA: um humano roda o gate de publicacao sobre a arvore inteira, antes de um push, e le o relatorio
 GATE_DA_FRONTEIRA: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline python -m genuino_mcp.check_tree ..; exit $LASTEXITCODE

@@ -210,6 +210,29 @@ O que isso **nao** garante:
 - A latencia observada foi de ~66s por auditoria, e o limite e de ~40 req/min.
   Auditar cada iteracao de cada missao muda o custo de tempo do loop.
 
+## 15. A contagem de chaves nao acompanha estado entre linhas
+
+`_function_end` decide onde uma funcao termina contando chaves, e ignora as que
+vivem dentro de string literal. O recorte e feito linha a linha, por expressao
+regular.
+
+Isso fecha o caso comum e deixa um aberto: uma string que ABRE numa linha e
+FECHA em outra. A regex nao pareia os dois lados, e uma chave numa linha
+intermediaria e contada como estrutura. Vale para here-string do PowerShell
+(`@" ... "@`) e para template literal de JS/TS que atravesse linhas.
+
+Medido contra a implementacao: uma funcao de 6 linhas com here-string contendo
+chave foi medida com 17, estourando ate o fim do arquivo.
+
+Nao ha correcao proporcional. Acompanhar estado entre linhas exige um scanner
+com memoria -- efetivamente um analisador lexico por linguagem -- e a funcao e
+heuristica declarada, nao parser. A alternativa seria trocar um falso positivo
+raro por um analisador que precisa estar certo sobre PowerShell, JavaScript,
+TypeScript e Python ao mesmo tempo.
+
+Fica declarado em vez de corrigido, que e o que esta secao existe para fazer.
+Encontrado pela contra-auditoria em `runs/check-bloat-chave-em-string/`.
+
 ---
 
 ## Corrigidos, com a evidência
