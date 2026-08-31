@@ -6,6 +6,7 @@ que so foi visto aprovando nao foi testado -- foi acompanhado.
 
 from __future__ import annotations
 
+import re
 import textwrap
 from pathlib import Path
 
@@ -423,6 +424,153 @@ def test_funcao_longa_ainda_e_detectada_com_chaves(tmp_path: Path) -> None:
         tmp_path, gates.BloatThresholds(max_file_lines=9999, max_function_lines=20)
     )
     assert any(f.rule == "funcao-longa" for f in result.findings)
+
+
+def _comprimento_reportado(findings: list, arquivo: str) -> int | None:
+    """Extrai o comprimento que o gate MEDIU, e nao apenas se ele acusou.
+
+    Existe porque a primeira versao deste oraculo media presenca ou ausencia de
+    achado, e nada mais. O revisor mostrou que isso deixa passar um falso-verde
+    inteiro: com a contagem quebrada, `_function_end` cai no `return len(lines)`,
+    e se o arquivo termina junto com a funcao o gate ainda reporta "longa" --
+    pelo motivo errado, com o numero errado, e o teste fica verde.
+
+    Medir o numero e o que separa "acusou" de "acusou certo".
+
+    LIMITE CONHECIDO, declarado por revisao independente: isto acopla o oraculo
+    ao texto do `excerpt`. `Finding` nao expoe campo numerico para comprimento,
+    entao nao ha outro caminho hoje. Uma mudanca so de redacao no `excerpt`
+    produziria RED falso. Dar a `Finding` um campo tipado esta fora do write-set
+    desta missao (`core.py`) e fica registrado como candidata.
+    """
+    for f in findings:
+        if f.rule == "funcao-longa" and f.path.endswith(arquivo):
+            achado = re.search(r"~(\d+) linhas", f.excerpt)
+            if achado:
+                return int(achado.group(1))
+    return None
+
+
+def test_chave_dentro_de_string_nao_desbalanceia_a_contagem(tmp_path: Path) -> None:
+    """Uma chave entre aspas e texto, nao estrutura.
+
+    Medido neste repositorio, e nao imaginado: `Get-AgyResultEvent`, de 25
+    linhas, foi reportada com 312 e BLOQUEOU um push real. A linha responsavel:
+
+        Where-Object { $_.Trim().StartsWith('{') }
+
+    Ela abre duas chaves -- uma de codigo e uma dentro de uma string -- e fecha
+    uma. A profundidade nunca volta a zero, a funcao nunca "termina", e passa a
+    engolir todo o arquivo abaixo dela.
+
+    Gate que acusa o inocente perde a autoridade de acusar o culpado.
+    """
+    corpo_solto = "\n".join(f"Write-Output {i}" for i in range(200))
+    fonte = (
+        "function Curta {\n"
+        "    $x = @('a') | Where-Object { $_.StartsWith('json quebrado: {') }\n"
+        "    Write-Output $x\n"
+        "}\n\n" + corpo_solto + "\n"
+    )
+    (tmp_path / "script.ps1").write_text(fonte, encoding="utf-8")
+    result = gates.check_bloat(
+        tmp_path, gates.BloatThresholds(max_file_lines=9999, max_function_lines=20)
+    )
+    assert not any(f.rule == "funcao-longa" for f in result.findings), (
+        "a chave dentro da string desbalanceou a contagem: uma funcao de 4 "
+        "linhas engoliu o arquivo inteiro e foi acusada de longa"
+    )
+
+
+def test_funcao_longa_com_string_e_medida_no_fim_exato(tmp_path: Path) -> None:
+    """A correcao nao pode virar cegueira, nem acertar pelo motivo errado.
+
+    Duas rodadas de revisao independente derrubaram as versoes anteriores deste
+    teste. O que cada uma matou esta registrado aqui porque a fixture so parece
+    arbitraria para quem nao viu o mutante que ela existe para matar.
+
+    RODADA 1 derrubou a versao que so verificava se o gate acusava: ela ficava
+    verde com a implementacao AINDA defeituosa, porque a contagem estourava,
+    caia no `return len(lines)`, e o arquivo terminava junto com a funcao.
+
+    RODADA 2 derrubou a versao que exigia `medido < 100`: uma faixa aceita
+    qualquer valor entre 21 e 99, e o mutante `return index` -- off-by-one --
+    media 64 em vez de 65 e passava. Com teto N, uma funcao real de N+1 linhas
+    passaria a medir N e deixaria de ser acusada. Agora o assert e igualdade
+    exata, derivada da propria fixture.
+
+    A fixture mata, por construcao:
+
+    - contagem crua (o defeito atual): as linhas com `'{'` e `"{"` fazem a
+      profundidade subir, o fallback de EOF inclui as 200 linhas de top-level,
+      e o comprimento medido vem 266 em vez de 65;
+    - "a primeira `}` encerra a funcao": termina na chave que fecha o `if` e
+      mede 4 linhas, entao o gate nao acusa nada;
+    - "ignorar toda linha que contenha aspas": a linha `if ($x -eq '{') {`
+      carrega string E abre bloco real. Ignora-la perde a abertura, a `}`
+      interna encerra a funcao cedo, e o gate nao acusa;
+    - "remover apenas literais de aspas simples": as linhas com `"{"` continuam
+      contando, a profundidade estoura, e o comprimento erra;
+    - "ignorar `{` em string mas continuar contando `}` em string": o
+      `Write-Output '}'` no meio do corpo zera a profundidade cedo, a funcao e
+      medida com 15 linhas, e o gate nao acusa. Chave em string nao e estrutura
+      DOS DOIS LADOS;
+    - `return index` em vez de `return index + 1`: mede uma linha a menos, e a
+      igualdade exata recusa;
+    - "remover o literal exato que apareceu no defeito": todas as chaves das
+      fixtures vem grudadas em texto (`json quebrado: {`), entao um replace da
+      sequencia isolada nao casa nada, a profundidade estoura e o comprimento
+      erra. Achado da rodada 3, e a STOP CONDITION que a missao ja declarava.
+    """
+    # Montadas por concatenacao, e nao por literal aninhado: uma chave dentro de
+    # f-string aninhada e exatamente o tipo de linha que este teste existe para
+    # discutir, e nao vale a pena escreve-la aqui.
+    # A chave vem GRUDADA em texto, e nao isolada. Achado observado na
+    # rodada 3: com literais isolados, um
+    #     line.replace("'{'", "").replace('''"{"''', "")
+    # passa na suite inteira e continua quebrando em `Write-Output "json: {"`.
+    # E o atalho que a propria missao proibe nas STOP CONDITIONS.
+    abre_simples = chr(39) + "json quebrado: {" + chr(39)
+    abre_duplas = chr(34) + "erro no bloco {" + chr(34)
+    fecha_simples = chr(39) + "fim do bloco }" + chr(39)
+
+    corpo = []
+    # Bloco real cuja linha de abertura tambem carrega uma string com chave.
+    corpo.append("    if ($x -eq 'prefixo {') {")
+    corpo.append("        Write-Output 'dentro'")
+    corpo.append("    }")
+    # Dez chaves de abertura em string antes do fechamento em string: garante
+    # que a contagem crua ja esteja desbalanceada quando o `'}'` aparecer, para
+    # que o defeito atual continue estourando ate o EOF em vez de fechar cedo.
+    for i in range(10):
+        corpo.append("    Write-Output " + (abre_duplas if i % 2 else abre_simples))
+    # Chave de FECHAMENTO em string. Sem esta linha, um sanitizador unilateral
+    # -- que ignora `{` em literal mas continua contando `}` -- passa na suite
+    # inteira. Achado observado na rodada 2 da revisao.
+    corpo.append("    Write-Output " + fecha_simples)
+    for i in range(50):
+        corpo.append("    Write-Output " + (abre_duplas if i % 2 else abre_simples))
+    depois = "\n".join(f"Write-Output {i}" for i in range(200))
+    fonte = "function Enorme {\n" + "\n".join(corpo) + "\n}\n\n" + depois + "\n"
+    (tmp_path / "grande.ps1").write_text(fonte, encoding="utf-8")
+
+    result = gates.check_bloat(
+        tmp_path, gates.BloatThresholds(max_file_lines=9999, max_function_lines=20)
+    )
+
+    medido = _comprimento_reportado(result.findings, "grande.ps1")
+    assert medido is not None, (
+        "a funcao longa deixou de ser detectada: a correcao virou cegueira, ou "
+        "uma chave em string encerrou a funcao antes da hora"
+    )
+    # Cabecalho + corpo + chave de fechamento. Derivado da fixture, e nao
+    # digitado: se a fixture mudar, o esperado muda junto.
+    esperado = len(corpo) + 2
+    assert medido == esperado, (
+        f"o gate mediu {medido} linhas, e a funcao tem {esperado}. "
+        "Igualdade, e nao faixa: uma faixa aceita o off-by-one, e com teto N "
+        "uma funcao de N+1 linhas deixaria de ser acusada"
+    )
 
 
 def test_scan_respeita_gitignore_quando_ha_repositorio(tmp_path: Path) -> None:
