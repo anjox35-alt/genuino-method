@@ -1,0 +1,28 @@
+# Normaliza fim de linha no repositorio. Sem isto, um commit feito no Windows
+# grava CRLF e o runner Linux da CI recebe scripts que nao executam, com erro
+# obscuro do tipo "bad interpreter: no such file or directory".
+* text=auto eol=lf
+
+# Sempre LF, mesmo no Windows: sao lidos por interpretadores POSIX ou por
+# ferramentas sensiveis a byte.
+*.sh      text eol=lf
+*.py      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.json    text eol=lf
+*.toml    text eol=lf
+*.md      text eol=lf
+
+# PowerShell tolera LF, mas CRLF e o padrao da plataforma e evita ruido de diff
+# para quem edita no Windows.
+*.ps1     text eol=crlf
+*.psm1    text eol=crlf
+
+# Binarios: nunca converter.
+*.png     binary
+*.jpg     binary
+*.gif     binary
+*.ico     binary
+*.pdf     binary
+*.zip     binary
+*.exe     binary

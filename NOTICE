@@ -1,0 +1,57 @@
+genuino-method
+Copyright 2026 Luiz Gabriel Vieira Bandeira
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+--------------------------------------------------------------------------------
+Procedência do material unificado
+--------------------------------------------------------------------------------
+
+Este repositório reúne partes de oito repositórios do mesmo autor. Todo o
+material é de autoria de Luiz Gabriel Vieira Bandeira (@anjox35-alt), que
+detém os direitos e autorizou a unificação sob Apache-2.0.
+
+Origem por componente:
+
+  method/       genuino-skill (Apache-2.0), genuino (relicenciado de
+                proprietário para Apache-2.0 por decisão do autor em 2026-08-30),
+                genuino-portable-instruction-system, guca
+
+  engine/       genuino-workspace — porte do motor de green loop de Bash
+                para PowerShell 7
+
+  mcp/          escrito do zero para este repositório. Nenhum dos oito
+                repositórios de origem continha implementação de servidor MCP.
+
+  tools/        genuino-engineering-system, genuino-hook-ledger
+
+O componente do repositório `genuino` estava distribuído sob licença
+proprietária. A mudança para Apache-2.0 aqui é uma decisão do titular dos
+direitos, registrada nesta data, e vale para as cópias distribuídas a partir
+deste repositório.
+
+--------------------------------------------------------------------------------
+Software de terceiros
+--------------------------------------------------------------------------------
+
+Este repositório não vendoriza código de terceiros. As dependências são
+declaradas e resolvidas pelos gerenciadores de pacote:
+
+  mcp (Python SDK do Model Context Protocol) — MIT
+  pytest — MIT
+  ruff — MIT
+
+Ferramentas usadas em tempo de execução, não distribuídas aqui:
+
+  semgrep — LGPL-2.1, invocada como executável externo quando presente
+  Codex CLI (@openai/codex) — invocado como executável externo

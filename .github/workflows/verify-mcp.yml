@@ -1,0 +1,107 @@
+name: verify-mcp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mcp/**"
+      - ".github/workflows/verify-mcp.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "mcp/**"
+      - ".github/workflows/verify-mcp.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    defaults:
+      run:
+        working-directory: mcp
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Tests
+        run: uv run pytest
+
+      # Os testes exercitam o servidor em memoria. Este passo sobe o processo de
+      # verdade e fala stdio -- e a fronteira que o cliente MCP atravessa. Um
+      # erro de entrypoint ou de empacotamento so aparece aqui.
+      - name: Smoke stdio
+        run: uv run python tests/smoke_stdio.py
+
+  # O gate de publicacao roda com o servidor apontado para a arvore inteira,
+  # e nao apenas para mcp/. Repositorio publico: segredo e caminho pessoal
+  # reprovam o merge, nao viram issue para depois.
+  publish-gate:
+    name: publish gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        working-directory: mcp
+        run: uv sync --locked
+
+      - name: Scan the whole tree
+        working-directory: mcp
+        run: uv run python -m genuino_mcp.check_tree ..
+
+  # Agregador exigido pela protecao de branch. Le o resultado por variavel de
+  # ambiente em vez de interpolar direto no shell: interpolacao de contexto
+  # dentro de `run` e uma superficie de injecao.
+  verify-required:
+    name: verify-required
+    needs: [verify, publish-gate]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every job succeeded
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          GATE_RESULT: ${{ needs.publish-gate.result }}
+        run: |
+          echo "verify=$VERIFY_RESULT publish-gate=$GATE_RESULT"
+          if [ "$VERIFY_RESULT" != "success" ] || [ "$GATE_RESULT" != "success" ]; then
+            echo "::error::Um ou mais jobs obrigatorios nao passaram."
+            exit 1
+          fi

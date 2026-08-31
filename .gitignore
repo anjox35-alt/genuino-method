@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Evidencia de execucao: gerada por run, nunca versionada.
+# O repositorio guarda o metodo, nao o historico de execucoes de uma maquina.
+runs/
+*.log
+
+# Segredos. O gate scan_secrets tambem reprova, mas a primeira linha de
+# defesa e o arquivo nunca entrar no indice.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+identity.key
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
