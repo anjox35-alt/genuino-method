@@ -257,6 +257,49 @@ Mitigacao, nao solucao: rodar o `TEST_CMD` completo na arvore antes de delegar,
 e ler o log em vez de so o exit code. Um `exit 1` que vem do oraculo e do
 gerente, e o teto de iteracoes esta sendo gasto com ele.
 
+## 17. Interpolacao com aspas aninhadas quebra o recorte de string
+
+Complemento do limite 15, e pela mesma causa: o recorte de literais e feito por
+expressao regular, e regex nao acompanha aninhamento.
+
+Uma subexpressao do PowerShell com aspas internas basta:
+
+    Write-Output "texto $( " { " )"
+
+A regex fecha a string na primeira aspa interna, o resto da linha e lido como
+codigo vivo, e a chave entra na contagem. Medido contra a implementacao: uma
+funcao de 4 linhas foi medida com 205, estourando ate o fim do arquivo. O mesmo
+vale para `${ ... }` de JS e TS com aspas dentro.
+
+Resolver exige acompanhar profundidade de subexpressao, que e trabalho de
+analisador lexico por linguagem. A funcao e heuristica declarada. Fica aqui, com
+o 15, pela mesma razao: o conserto seria maior que o defeito.
+
+Encontrado pela contra-auditoria em
+`runs/check-bloat-chave-em-string/20260831T174218.231Z`.
+
+## 18. O gate de inflacao nao enxerga o modulo central do motor
+
+`check_bloat` mede `.py`, `.ts`, `.js`, `.mjs` e `.ps1`. **Nao mede `.psm1`.**
+
+`engine/GenuinoEngine.psm1` tem 833 linhas contra um teto de 600, e nunca foi
+reportado. O gate que existe para pegar inflacao e cego para o maior arquivo
+PowerShell do repositorio, e o proprio nucleo do motor.
+
+Isto nao e um limite conceitual como o 15 e o 17: e uma lacuna corrigivel, e um
+argumento contra a confianca em `GATE DE PUBLICACAO: PASS`. Um PASS significa
+"nenhum sintoma nos arquivos que este gate resolve olhar", e a lista de
+extensoes nunca foi auditada contra o que o repositorio realmente contem.
+
+Fica declarado ate virar missao. A correcao tem duas partes que nao se
+substituem: incluir `.psm1` no escopo, e entao decidir o que fazer com um modulo
+de 833 linhas -- porque incluir a extensao sem dividir o arquivo apenas troca um
+ponto cego por um gate vermelho permanente.
+
+Encontrado ao verificar um achado `observed: false` da contra-auditoria. A
+hipotese dela estava errada no detalhe -- ela supos que o gate media `.psm1` e
+aplicava a regex errada -- e certa no fundo: havia algo errado com `.psm1`.
+
 ---
 
 ## Corrigidos, com a evidência
