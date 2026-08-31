@@ -20,6 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from .blocks import find_long_functions
 from .core import (
     BINARY_SUFFIXES,
     FAIL,
@@ -324,7 +325,7 @@ def check_bloat(
                 )
             )
 
-        findings.extend(_find_long_functions(rel, lines, th.max_function_lines))
+        findings.extend(find_long_functions(path, rel, lines, th.max_function_lines))
         _index_blocks(block_index, rel, lines, th.max_duplicate_block_lines)
 
     findings.extend(_report_duplicates(block_index, th))
@@ -400,72 +401,6 @@ def _report_duplicates(
             )
         )
     return findings
-
-
-_FUNC_START = re.compile(
-    r"^\s*(?:def\s+\w+|async\s+def\s+\w+|function\s+\w+|export\s+function\s+\w+"
-    r"|function\s+[A-Z][\w-]*|\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=>)"
-)
-
-
-def _function_end(lines: list[str], start: int) -> int:
-    """Acha onde a funcao iniciada em `start` termina.
-
-    Duas estrategias, porque as linguagens do projeto delimitam bloco de formas
-    diferentes:
-
-    - Chaves (PowerShell, JS, TS): conta abre e fecha ate balancear.
-    - Indentacao (Python): termina na primeira linha nao vazia cuja indentacao
-      volta ao nivel da declaracao ou acima.
-
-    A versao anterior usava "ate a proxima funcao", e isso produzia falso
-    positivo grosseiro: a ultima funcao de um arquivo engolia todo o codigo
-    top-level abaixo dela. Uma funcao de oito linhas era reportada com cento e
-    oitenta. Gate que acusa o inocente perde a autoridade de acusar o culpado.
-    """
-    header = lines[start]
-
-    if "{" in header:
-        depth = 0
-        for index in range(start, len(lines)):
-            depth += lines[index].count("{") - lines[index].count("}")
-            if depth <= 0 and index > start:
-                return index + 1
-            if depth == 0 and index == start and "}" in lines[index]:
-                return index + 1
-        return len(lines)
-
-    base_indent = len(header) - len(header.lstrip())
-    for index in range(start + 1, len(lines)):
-        line = lines[index]
-        if not line.strip():
-            continue
-        if len(line) - len(line.lstrip()) <= base_indent:
-            return index
-    return len(lines)
-
-
-def _find_long_functions(rel: str, lines: list[str], max_lines: int) -> list[Finding]:
-    """Aponta funcoes que passaram do teto de linhas.
-
-    E heuristica, nao parser. Serve para apontar o candidato a revisao, nao para
-    julgar o codigo.
-    """
-    out: list[Finding] = []
-    for start, header in enumerate(lines):
-        if not _FUNC_START.match(header):
-            continue
-        length = _function_end(lines, start) - start
-        if length > max_lines:
-            out.append(
-                Finding(
-                    path=rel,
-                    line=start + 1,
-                    rule="funcao-longa",
-                    excerpt=f"~{length} linhas (teto {max_lines}): {header.strip()[:120]}",
-                )
-            )
-    return out
 
 
 # --------------------------------------------------------------------------
