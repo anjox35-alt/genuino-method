@@ -49,7 +49,7 @@ oraculo antes de ele virar contrato. O registro esta em
 WRITE_SET: mcp/src/genuino_mcp/gates.py
 ORACULO: mcp/tests/
 
-TEST_CMD: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline pytest tests/test_gates.py -q; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline ruff check .; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline ruff format --check .; exit $LASTEXITCODE
+TEST_CMD: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline python -m pytest tests/test_gates.py -q --basetemp=.pytest-tmp; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff check .; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline python -m ruff format --check .; exit $LASTEXITCODE
 
 FRONTEIRA: um humano roda o gate de publicacao sobre a arvore inteira, antes de um push, e le o relatorio
 GATE_DA_FRONTEIRA: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline python -m genuino_mcp.check_tree ..; exit $LASTEXITCODE
@@ -82,6 +82,27 @@ casos de dentro da caixa -- ele ofereceu as duas leituras, o que estava certo.
 O cache em `TEMP/genuino-uv-cache` foi aquecido pelo gerente, que tem rede.
 Verificado: 77 MB, e um projeto limpo criou o venv inteiro com
 `uv sync --offline` apontando so para ele, exit 0.
+
+### Por que `python -m` e nao o executavel
+
+O Controle de Aplicativo do Windows bloqueia o `pytest.exe` RECEM-CRIADO no
+`.venv` do worktree, com `os error 4551`. Medido: numa execucao o shim foi
+bloqueado; numa seguinte, com o venv ja existente, ele passou. Bloqueio
+intermitente e pior que bloqueio constante, porque produz `exit 2` sem padrao.
+
+`python -m pytest` nao spawna o shim gerado, e o interpretador passa nos dois
+casos. Isso nao contorna o controle de seguranca: usa um caminho que ele ja
+autoriza. O operario recusou explicitamente contornar, e estava certo.
+
+### Por que `--basetemp=.pytest-tmp`
+
+O `tmp_path` do pytest escreve em `%TEMP%/pytest-of-<usuario>`, que o gerente ja
+criou nas proprias execucoes. O operario escreve em TEMP, mas nao dentro de um
+diretorio preexistente com outro dono: `PermissionError [WinError 5]`.
+
+`.pytest-tmp/` vive no worktree e esta no `.gitignore`. Isso importa: o motor
+roda `git add -A` antes de comparar, e um diretorio nao ignorado ali viraria
+violacao de contrato nomeada em vez de arquivo temporario inofensivo.
 
 ## STOP CONDITIONS
 
