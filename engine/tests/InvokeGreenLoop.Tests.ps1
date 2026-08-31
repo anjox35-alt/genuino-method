@@ -404,20 +404,35 @@ Describe 'Split-GitPathLine' {
     }
 }
 
+# A deteccao roda AQUI, no nivel do arquivo, e nao num `BeforeAll`.
+#
+# No Pester 5 o argumento de `-Skip:` e avaliado na fase de Discovery, que
+# acontece ANTES de qualquer `BeforeAll`. Escrito la dentro, a variavel ainda
+# era $null na hora da decisao, `-not $null` dava $true, e o caso se pulava em
+# TODO sistema operacional -- inclusive no ubuntu, onde ele deveria rodar.
+#
+# O resultado era a pior forma de teste: verde na matriz inteira, com a
+# aparencia de cobertura condicional, sem executar em lugar nenhum.
+$script:FsCaseSensitive = $(
+    $sonda = Join-Path ([IO.Path]::GetTempPath()) ("GenuinoCaixa-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $sonda -Force | Out-Null
+    try {
+        'x' | Set-Content -LiteralPath (Join-Path $sonda 'Probe.txt')
+        -not (Test-Path -LiteralPath (Join-Path $sonda 'probe.txt'))
+    } finally {
+        Remove-Item -LiteralPath $sonda -Recurse -Force -ErrorAction SilentlyContinue
+    }
+)
+
 Describe 'Get-PathOutsideWriteSet -- comparacao sensivel a caixa' {
 
     BeforeAll {
-        # Este caso so e observavel onde o filesystem distingue caixa. No NTFS,
-        # `src/foo.txt` e `SRC/FOO.txt` sao o mesmo arquivo e o cenario nao pode
-        # ser montado. O CI roda a matriz em ubuntu, onde ele roda de verdade.
         $script:RC = New-Sandbox
-        $sonda = Join-Path $script:RC 'Caixa.probe'
-        'x' | Set-Content -LiteralPath $sonda
-        $script:CaseSensitive = -not (Test-Path -LiteralPath (Join-Path $script:RC 'caixa.probe'))
-        Remove-Item -LiteralPath $sonda -Force
     }
 
-    It 'um caminho permitido nao mascara um caminho externo de caixa diferente' -Skip:(-not $script:CaseSensitive) {
+    # No NTFS, `src/foo.txt` e `SRC/FOO.txt` sao o mesmo arquivo e o cenario nao
+    # pode ser montado. A matriz da CI roda ubuntu, onde ele roda de verdade.
+    It 'um caminho permitido nao mascara um caminho externo de caixa diferente' -Skip:(-not $script:FsCaseSensitive) {
         New-Item -ItemType Directory -Path (Join-Path $script:RC 'src') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $script:RC 'SRC') -Force | Out-Null
         'permitido' | Set-Content -LiteralPath (Join-Path $script:RC 'src/foo.txt')
@@ -433,5 +448,19 @@ Describe 'Get-PathOutsideWriteSet -- comparacao sensivel a caixa' {
         # Com `-notcontains` (case-insensitive), 'SRC/FOO.txt' casaria com
         # 'src/foo.txt' da lista de permitidos e sumiria daqui.
         $fora | Should -Contain 'SRC/FOO.txt'
+    }
+
+    # Sem este caso, um `-Skip:` sempre-verdadeiro voltaria a passar despercebido:
+    # a suite ficaria verde com o caso acima pulado em toda a matriz, exatamente
+    # como aconteceu antes desta correcao.
+    #
+    # `-ForEach` e o caminho pelo qual o Pester leva um valor da fase de
+    # Discovery para a de Run. Ler `$script:FsCaseSensitive` direto aqui dentro
+    # devolve $null: sao escopos distintos, e foi assim que a primeira versao
+    # deste guarda falhou.
+    It 'a decisao de pular veio de um booleano, nao de $null' -ForEach @(
+        @{ Sonda = $script:FsCaseSensitive }
+    ) {
+        $Sonda | Should -BeOfType [bool]
     }
 }
