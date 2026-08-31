@@ -10,6 +10,12 @@
             "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/proteger-oraculo.sh\"",
             "timeout": 20,
             "statusMessage": "Verificando se o oraculo esta sob missao..."
+          },
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/impedir-copia.sh\"",
+            "timeout": 20,
+            "statusMessage": "Verificando nome de copia (R4)..."
           }
         ]
       }

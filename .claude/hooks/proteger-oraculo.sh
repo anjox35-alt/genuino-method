@@ -36,7 +36,15 @@ print(ti.get('file_path') or ti.get('path') or '')
 # backslash at end of string". `\134` e o mesmo caractere em octal, sem
 # ambiguidade de escape.
 # `\` e o mesmo caractere em octal, sem ambiguidade de escape.
-normalizado=$(printf '%s' "$alvo" | tr '\134' '/')
+#
+# E minusculas porque o NTFS nao distingue caixa: `mcp/Tests/t.py` E
+# `mcp/tests/t.py`, o mesmo arquivo. Sem isso o `case` abaixo e sensivel a
+# caixa, e a protecao do oraculo cai com a tecla shift. Medido antes do
+# conserto, sob missao ativa: `mcp/Tests/` e `MCP/TESTS/` passavam.
+#
+# Minusculiza so a copia de comparacao. `$alvo` original fica intocado: num
+# filesystem que distingue caixa ele e o unico caminho que existe de verdade.
+normalizado=$(printf '%s' "$alvo" | tr '\134' '/' | tr 'A-Z' 'a-z')
 
 case "$normalizado" in
     */mcp/tests/*)

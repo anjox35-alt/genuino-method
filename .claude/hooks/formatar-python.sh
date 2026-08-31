@@ -28,7 +28,15 @@ print(tr.get('filePath') or ti.get('file_path') or '')
 # backslash at end of string". `\134` e o mesmo caractere em octal, sem
 # ambiguidade de escape.
 # `\` e o mesmo caractere em octal, sem ambiguidade de escape.
-normalizado=$(printf '%s' "$alvo" | tr '\134' '/')
+#
+# E minusculas porque o NTFS nao distingue caixa: `MCP/src/a.PY` E
+# `mcp/src/a.py`, o mesmo arquivo. Sem isso o `case` abaixo deixa de formatar
+# um arquivo que o `ruff format --check` da CI vai reprovar minutos depois, no
+# push -- que e o atraso de diagnostico que este hook existe para encurtar.
+#
+# Minusculiza so a copia de comparacao. `$alvo` original e o que vai para o
+# ruff: num filesystem que distingue caixa, o minusculizado nao existe.
+normalizado=$(printf '%s' "$alvo" | tr '\134' '/' | tr 'A-Z' 'a-z')
 
 case "$normalizado" in
     */mcp/*.py)
