@@ -52,7 +52,9 @@ def test_aspa_escapada_por_crase_nao_expoe_a_chave(tmp_path: Path) -> None:
     Isto importa mais neste repositorio do que pareceria: o motor inteiro e
     escrito em PowerShell, e `check_bloat` mede `.ps1`.
     """
-    linha = "    Write-Output " + ASPAS + "A " + CRASE + ASPAS + " { " + CRASE + ASPAS + " B" + ASPAS
+    linha = (
+        "    Write-Output " + ASPAS + "A " + CRASE + ASPAS + " { " + CRASE + ASPAS + " B" + ASPAS
+    )
     assert not _acusou_funcao_longa(tmp_path, "escape.ps1", [linha, "    Write-Output 1"]), (
         "a aspa escapada por crase encerrou a string cedo demais, a chave vazou "
         "para a contagem, e a funcao de 4 linhas engoliu o arquivo"

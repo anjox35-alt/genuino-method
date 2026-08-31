@@ -233,6 +233,30 @@ TypeScript e Python ao mesmo tempo.
 Fica declarado em vez de corrigido, que e o que esta secao existe para fazer.
 Encontrado pela contra-auditoria em `runs/check-bloat-chave-em-string/`.
 
+## 16. Lint no TEST_CMD torna a missao insatisfazivel se o oraculo violar o lint
+
+O `TEST_CMD` deste repositorio inclui `ruff check` e `ruff format --check`, e
+inclui de proposito: uma missao anterior entregou GREEN correto e o ruff
+reprovou depois, em arquivo do gerente. O que nao esta no comando medido nao e
+medido, e o que nao e medido nao pode ser cobrado de ninguem.
+
+Mas o lint roda sobre a arvore INTEIRA, e o oraculo faz parte dela. Se o gerente
+escreve uma linha longa demais em `mcp/tests/`, o gate reprova por um arquivo
+que o operario esta proibido de tocar. Ele nao tem saida legitima: nao pode
+corrigir, e qualquer patch dele continua reprovando.
+
+Aconteceu, e custou caro. Em `runs/check-bloat-chave-em-string/20260831T171819.500Z`
+o operario entregou o MESMO patch nas tres iteracoes -- md5 identico -- porque
+era a unica coisa que ele podia fazer. Os 43 testes passavam. O gate reprovava
+por `E501 Line too long (101 > 100)` numa linha do proprio gerente.
+
+O motor nao distingue "o codigo do operario reprova no lint" de "o oraculo do
+gerente reprova no lint". Os dois viram `exit 1`, e o exit 1 consome iteracao.
+
+Mitigacao, nao solucao: rodar o `TEST_CMD` completo na arvore antes de delegar,
+e ler o log em vez de so o exit code. Um `exit 1` que vem do oraculo e do
+gerente, e o teto de iteracoes esta sendo gasto com ele.
+
 ---
 
 ## Corrigidos, com a evidência
