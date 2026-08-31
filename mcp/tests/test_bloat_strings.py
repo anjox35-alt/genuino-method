@@ -18,7 +18,10 @@ com erro meu na mesma sessao:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+import pytest
 
 from genuino_mcp import gates
 
@@ -92,4 +95,158 @@ def test_a_correcao_nao_cega_o_gate_nas_novas_aspas(tmp_path: Path) -> None:
     corpo += [f"    Write-Output {i}" for i in range(60)]
     assert _acusou_funcao_longa(tmp_path, "grande.ps1", corpo), (
         "funcao de 65 linhas deixou de ser detectada: a correcao virou cegueira"
+    )
+
+
+def _comprimento_reportado(findings: list, arquivo: str) -> int | None:
+    """Devolve o comprimento que o gate MEDIU, e nao apenas se ele acusou.
+
+    Duplicado de `test_gates.py` de proposito: sao cinco linhas, e importar
+    entre modulos de teste acopla dois arquivos que o pytest coleta de forma
+    independente.
+
+    LIMITE CONHECIDO, o mesmo la e aqui: isto le o texto do `excerpt`, porque
+    `Finding` nao expoe campo numerico de comprimento. Uma mudanca so de
+    redacao no `excerpt` produz RED falso. Dar a `Finding` um campo tipado
+    vive em `core.py`, fora do write-set desta missao, e fica como candidata.
+    """
+    for f in findings:
+        if f.rule == "funcao-longa" and f.path.endswith(arquivo):
+            achado = re.search(r"~(\d+) linhas", f.excerpt)
+            if achado:
+                return int(achado.group(1))
+    return None
+
+
+def _mede(tmp_path: Path, nome: str, corpo: list[str]) -> int | None:
+    """Escreve a fixture e devolve o comprimento medido, nao apenas se acusou."""
+    fonte = "function F {\n" + "\n".join(corpo) + "\n}\n\n" + RABO + "\n"
+    (tmp_path / nome).write_text(fonte, encoding="utf-8")
+    resultado = gates.check_bloat(
+        tmp_path, gates.BloatThresholds(max_file_lines=9999, max_function_lines=20)
+    )
+    return _comprimento_reportado(resultado.findings, nome)
+
+
+def test_funcao_longa_em_ts_e_medida_no_fim_exato(tmp_path: Path) -> None:
+    """A correcao para JS/TS nao pode virar cegueira para JS/TS.
+
+    Lacuna encontrada pela contra-auditoria ANTES da delegacao, e confirmada
+    por medicao do gerente: dos quatro asserts do oraculo que EXIGEM deteccao,
+    tres usavam `.ps1` e um usava `.py`. Nenhum usava `.ts`, `.js` ou `.mjs`.
+
+    O unico teste que cobria TypeScript exigia que uma funcao CURTA nao fosse
+    reportada. Com so aquele, uma implementacao que simplesmente parasse de
+    contar chaves nessas tres extensoes passava no oraculo inteiro e deixava o
+    gate cego para elas. E o mesmo mutante que
+    `test_a_correcao_nao_cega_o_gate_nas_novas_aspas` mata do lado do
+    PowerShell, e que do lado do JS nao tinha quem matasse.
+
+    A fixture e desbalanceada de proposito, na mesma forma que a de
+    `test_funcao_longa_com_string_e_medida_no_fim_exato`: dez aberturas em
+    literal contra um fechamento. Sem esse desequilibrio o par extra de chaves
+    se cancela, a contagem crua acerta por acidente, e o teste nasce verde sem
+    medir nada.
+    """
+    # Bloco real cuja linha de abertura TAMBEM carrega template literal com chave.
+    corpo = ["    if (x === " + CRASE + "prefixo {" + CRASE + ") {"]
+    corpo += ["        console.log('dentro');", "    }"]
+    # Dez aberturas em literal: garantem que a contagem crua ja esteja
+    # desbalanceada quando o fechamento em literal aparecer.
+    corpo += [f"    const a{i} = " + CRASE + "json quebrado: {" + CRASE + ";" for i in range(10)]
+    # Fechamento em literal: mata o sanitizador unilateral, que ignora `{` entre
+    # crases e continua contando `}`.
+    corpo += ["    const fim = " + CRASE + "fim do bloco }" + CRASE + ";"]
+    corpo += [f"    const v{i} = {i};" for i in range(50)]
+
+    medido = _mede(tmp_path, "longa.ts", corpo)
+    assert medido is not None, (
+        "funcao longa em TypeScript deixou de ser detectada: o tratamento de "
+        "template literal virou cegueira para a linguagem inteira"
+    )
+    esperado = len(corpo) + 2
+    assert medido == esperado, (
+        f"o gate mediu {medido} linhas em .ts, e a funcao tem {esperado}. "
+        "Igualdade, e nao faixa: faixa aceita o off-by-one"
+    )
+
+
+def test_sem_o_analisador_o_gate_degrada_e_nao_quebra(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ausencia do analisador e faixa >=2, e faixa >=2 nao pode virar excecao.
+
+    Lacuna encontrada pela contra-auditoria antes da delegacao: a missao exige
+    que o gate caia na contagem de chaves quando o interpretador do PowerShell
+    nao existe, mas nenhum teste exercitava esse caminho. Uma implementacao que
+    levantasse excecao fatal passaria no oraculo, e entao `check_bloat`
+    quebraria em qualquer maquina sem PowerShell -- o runner `ubuntu-latest` da
+    CI inclusive, se um dia deixar de traze-lo pre-instalado.
+
+    Os dois monkeypatches cobrem as duas formas de descobrir a ausencia, porque
+    o oraculo nao dita a implementacao: quem consulta `shutil.which` antes, e
+    quem simplesmente chama e trata `FileNotFoundError`.
+
+    `_git_tracked_files` captura `OSError` e cai no `rglob`, entao derrubar o
+    `subprocess.run` nao cega a listagem de arquivos. Verificado em `core.py`.
+    """
+    monkeypatch.setattr(gates.shutil, "which", lambda _name: None)
+
+    def sem_executavel(*_args, **_kwargs):
+        raise FileNotFoundError("interpretador ausente")
+
+    monkeypatch.setattr(gates.subprocess, "run", sem_executavel)
+
+    corpo = [f"    Write-Output {i}" for i in range(60)]
+    medido = _mede(tmp_path, "degrada.ps1", corpo)
+    esperado = len(corpo) + 2
+    assert medido == esperado, (
+        f"sem o analisador o gate mediu {medido} e a funcao tem {esperado}: a "
+        "degradacao para contagem de chaves nao aconteceu, ou o gate quebrou"
+    )
+
+
+def test_chave_de_fechamento_em_string_nao_encerra_a_funcao_cedo(tmp_path: Path) -> None:
+    """O flanco simetrico: a contagem crua tambem erra para MENOS.
+
+    Todas as outras fixtures deste oraculo tem a contagem crua estourando ate o
+    EOF, ou acertando. Nenhuma a fazia FECHAR CEDO. Medido nas sete anteriores:
+    205/4, 205/4, 205/4, 267/66, 65/65, 3/3, 62/62 -- a crua nunca ficava ABAIXO
+    da verdade.
+
+    Isso deixava vivo um mutante que passa em 100% do oraculo:
+
+        fim = _parser_end(...)
+        return min(fim, _contagem(...)) if fim is not None else _contagem(...)
+
+    Com a crua sempre igual ou maior, `min` e indistinguivel do parser puro --
+    min(4, 205) = 4, min(66, 267) = 66, min(65, 65) = 65. Passa tudo, e emudece
+    o gate no caso desta fixture.
+
+    A causa esta escrita no proprio oraculo: em
+    `test_funcao_longa_com_string_e_medida_no_fim_exato` as dez aberturas em
+    literal vem ANTES do fechamento em literal, de proposito, "para que o
+    defeito atual continue estourando ate o EOF em vez de fechar cedo". A
+    escolha que mata o sanitizador unilateral garante, de quebra, que a crua
+    nunca subestime -- e deixa este flanco aberto.
+
+    Aqui a ordem e invertida: o fechamento em string vem sem nenhuma abertura em
+    string antes. Medido contra a implementacao atual: crua = 2, verdade = 63.
+    Uma funcao de 63 linhas desaparece do gate sob teto de 20.
+
+    Achado da revisao adversarial antes da delegacao, confirmado por medicao.
+    """
+    corpo = ["    Write-Output 'fecha aqui: }'"]
+    corpo += [f"    Write-Output {i}" for i in range(60)]
+
+    medido = _mede(tmp_path, "fecha-cedo.ps1", corpo)
+    assert medido is not None, (
+        "funcao de 63 linhas nao foi reportada: a chave de fechamento dentro da "
+        "string encerrou a contagem na segunda linha, e o gate ficou mudo"
+    )
+    esperado = len(corpo) + 2
+    assert medido == esperado, (
+        f"o gate mediu {medido} linhas e a funcao tem {esperado}. Se o valor for "
+        "menor que o real, o resultado do parser foi combinado com a contagem "
+        "crua em vez de substitui-la"
     )
