@@ -172,6 +172,24 @@ Desde que `Test-PositiveLiteralPathspec` passou a rejeitar magia antes desse
 ponto, o caso deixou de ser alcançável pela porta da frente. Fica registrado
 porque a divergência entre os dois comandos continua existindo no código.
 
+## 13. A evidência não viaja com o repositório
+
+`runs/` está no `.gitignore`. Toda a evidência que a R2 exige — comando, saída,
+exit code, `verdict.json`, `diff.patch` — existe apenas na máquina que rodou o
+loop.
+
+Consequência direta: **quem clona este repositório não pode verificar nenhum
+veredito.** Os commits dizem que os gates passaram; o leitor tem a palavra do
+autor, que é exatamente o que o método recusa aceitar em qualquer outro ponto.
+
+O motivo do `.gitignore` é real — um run carrega caminhos absolutos do host,
+nomes de worktree em `%TEMP%` e patches inteiros — mas o motivo explica a
+exclusão, não a resolve.
+
+O que fecharia: versionar um `verdict.json` sanitizado por missão, com os
+hashes, os exit codes e os caminhos reduzidos a marcadores, deixando fora
+apenas o patch e o transitório. Não está feito.
+
 ---
 
 ## Corrigidos, com a evidência
@@ -183,7 +201,8 @@ Um limite sai desta lista quando deixa de existir. Estes saíram:
 | `WRITE_SET: :`, `:!tests/` e `:(attr:x)` passavam pela contagem `Count > 0` e não restringiam nada | `Test-PositiveLiteralPathspec`, aplicada a write-set **e** oráculo em `Invoke-GreenLoop.ps1` | `engine/tests/GenuinoEngine.Tests.ps1`, bloco `Test-PositiveLiteralPathspec` |
 | Rename de fora para dentro do write-set não era registrado: `git diff --name-only` reporta só a pós-imagem, e a subtração concluía que nada fora foi tocado | `--no-renames` em `Get-PathOutsideWriteSet` | `InvokeGreenLoop.Tests.ps1`, "nomeia o lado de FORA de um rename". O mutante `--find-renames` reprova o caso. |
 | `-notcontains` é case-insensitive: num filesystem que distingue caixa, um `src/foo` permitido apagava um `SRC/FOO` externo da lista de violações | `-cnotcontains` | Caso condicional em `InvokeGreenLoop.Tests.ps1`, pulado no NTFS e executado na matriz ubuntu da CI |
-| `.Trim()` colapsava `foo`, `" foo"` e `"foo "` num nome só | `Split-GitPathLine`, que remove apenas o `` do CRLF | `InvokeGreenLoop.Tests.ps1`, bloco `Split-GitPathLine` |
+| `.Trim()` colapsava `foo`, `" foo"` e `"foo "` num nome só | `Split-GitPathLine`, que remove apenas o `
+` do CRLF | `InvokeGreenLoop.Tests.ps1`, bloco `Split-GitPathLine` |
 | `check_bloat` reportava "nenhum sintoma em 18 arquivos" sem dizer quais: lia-se como "o repositório", enquanto um markdown de 606 KB passava ao lado | O sumário nomeia as extensões medidas e declara o que ficou fora | `mcp/src/genuino_mcp/gates.py`, retorno de `check_bloat` |
 
 ---
