@@ -85,7 +85,7 @@ versão anterior dos testes.
 WRITE_SET: mcp/src/genuino_mcp/
 ORACULO: mcp/tests/
 
-TEST_CMD: $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run pytest tests/test_publish.py -q; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run ruff check .; exit $LASTEXITCODE
+TEST_CMD: $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run pytest tests/test_publish.py -q; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run ruff check .; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run ruff format --check .; exit $LASTEXITCODE
 
 FRONTEIRA: `from genuino_mcp.publish import build_public_verdict` num script do autor, sobre um verdict.json real de runs/
 GATE_DA_FRONTEIRA: $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run python -c "from genuino_mcp.publish import build_public_verdict; print('importavel')"; exit $LASTEXITCODE
