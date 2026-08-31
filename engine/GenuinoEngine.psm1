@@ -437,7 +437,8 @@ function Split-GitPathLine {
       colapsava num so, e um deles podia mascarar o outro na subtracao de
       conjuntos.
 
-      Aqui so o `` de fim de linha do CRLF sai. O nome fica como o git o
+      Aqui so o `
+` de fim de linha do CRLF sai. O nome fica como o git o
       escreveu.
 
       Limite conhecido: com `core.quotePath` ligado (o padrao), o git C-quota
@@ -664,6 +665,21 @@ function Invoke-ClosedStdinProcess {
     $psi.RedirectStandardError  = $true
     $psi.RedirectStandardInput  = $true
     $psi.UseShellExecute        = $false
+    # UTF-8 SEM BOM nos tres fluxos, explicitamente.
+    #
+    # Sem isto, o .NET usa o code page do console -- cp850 numa maquina Windows
+    # em portugues -- e toda acentuacao vira byte invalido do outro lado. O
+    # `codex exec` recusou o primeiro prompt com "input is not valid UTF-8
+    # (invalid byte at offset 319)" e saiu em dois segundos: o offset caia
+    # exatamente na primeira palavra acentuada da missao.
+    #
+    # O BOM tem de ficar de fora. Um prompt que comeca com EF BB BF nao e texto
+    # limpo para quem le do outro lado, e o proprio codex trata isso como lixo
+    # antes da primeira instrucao.
+    $utf8SemBom = [System.Text.UTF8Encoding]::new($false)
+    $psi.StandardInputEncoding  = $utf8SemBom
+    $psi.StandardOutputEncoding = $utf8SemBom
+    $psi.StandardErrorEncoding  = $utf8SemBom
     foreach ($argument in $ArgumentList) { $psi.ArgumentList.Add($argument) }
 
     try {

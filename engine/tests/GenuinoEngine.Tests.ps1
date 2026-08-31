@@ -413,3 +413,30 @@ Describe 'Test-PositiveLiteralPathspec' {
         Test-PositiveLiteralPathspec -Pathspec '   '       | Should -BeFalse
     }
 }
+
+Describe 'Invoke-ClosedStdinProcess -- encoding dos fluxos' {
+
+    It 'entrega acentuacao ao processo filho sem corromper' {
+        # O `codex exec` recusou um prompt inteiro com "input is not valid UTF-8
+        # (invalid byte at offset 319)" porque o .NET usava o code page do
+        # console. O texto abaixo tem exatamente as formas que quebravam.
+        $texto = 'MISSAO: NUCLEO, execucao, decisao -- ' + [char]0x00C3 + [char]0x00E7 + [char]0x00E3 + [char]0x00F5 + [char]0x00CA
+        $r = Invoke-ClosedStdinProcess -FilePath (Resolve-ExternalCommand -Name 'python') `
+            -ArgumentList @('-c', 'import sys; d = sys.stdin.buffer.read(); d.decode("utf-8"); sys.stdout.write("OK:" + str(len(d)))') `
+            -WorkingDirectory $PSScriptRoot -StdinContent $texto -TimeoutSeconds 60
+
+        $r.Launched | Should -BeTrue
+        # `d.decode("utf-8")` levanta e o exit vira 1 se a codificacao estiver errada.
+        $r.ExitCode | Should -Be 0
+        $r.Output   | Should -Match 'OK:'
+    }
+
+    It 'nao antepoe BOM ao conteudo enviado' {
+        # Tres bytes EF BB BF antes da primeira instrucao sao lixo para quem le.
+        $r = Invoke-ClosedStdinProcess -FilePath (Resolve-ExternalCommand -Name 'python') `
+            -ArgumentList @('-c', 'import sys; d = sys.stdin.buffer.read(); sys.stdout.write("BOM" if d[:3] == b"\xef\xbb\xbf" else "SEM-BOM")') `
+            -WorkingDirectory $PSScriptRoot -StdinContent 'abc' -TimeoutSeconds 60
+
+        $r.Output | Should -Match 'SEM-BOM'
+    }
+}
