@@ -29,7 +29,7 @@ fecha a mesma licao pela segunda causa.
 - Funcao curta com chave dentro de aspas: **nao** e reportada como longa, e nao
   engole o codigo abaixo dela.
 - Funcao genuinamente longa que tambem contem chave em string: **continua**
-  sendo reportada. Esta e a metade que importa mais.
+  sendo reportada, e medida no fim CERTO.
 
 A segunda regra existe porque a correcao mais barata e errada: desistir de
 contar quando ha aspas na linha. Isso passa no primeiro caso e deixa o gate mudo
@@ -42,21 +42,56 @@ que apareceu no defeito. O oraculo usa `Where-Object` porque foi o caso medido,
 mas a regra e sobre chave em string literal, em qualquer das linguagens que o
 gate mede.
 
+Tres rodadas de contra-auditoria independente derrubaram versoes anteriores do
+oraculo antes de ele virar contrato. O registro esta em
+`audits/2026-08-31-oraculo-check-bloat/AUDITORIA.md`.
+
 WRITE_SET: mcp/src/genuino_mcp/gates.py
 ORACULO: mcp/tests/
 
-TEST_CMD: $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run pytest tests/test_gates.py -q; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run ruff check .; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run ruff format --check .; exit $LASTEXITCODE
+TEST_CMD: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline pytest tests/test_gates.py -q; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline ruff check .; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; uv run --offline ruff format --check .; exit $LASTEXITCODE
 
 FRONTEIRA: um humano roda o gate de publicacao sobre a arvore inteira, antes de um push, e le o relatorio
-GATE_DA_FRONTEIRA: $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run python -m genuino_mcp.check_tree ..; exit $LASTEXITCODE
-PRE_REQUISITOS_HUMANOS: NENHUM
+GATE_DA_FRONTEIRA: $env:UV_CACHE_DIR="$env:TEMP/genuino-uv-cache"; $env:UV_LINK_MODE='copy'; Set-Location mcp; uv run --offline python -m genuino_mcp.check_tree ..; exit $LASTEXITCODE
+PRE_REQUISITOS_HUMANOS: cache do uv aquecido em TEMP/genuino-uv-cache. O operario roda sem rede e nao alcanca o cache global; o motor nao verifica isso, e por isso este campo existe.
+
+## Nota sobre o ambiente do operario
+
+A primeira tentativa desta missao abortou com `ESCALAR` e exit 2, sem consumir
+iteracao. O operario diagnosticou o defeito corretamente e entao parou, porque o
+`TEST_CMD` que o gerente escreveu nao rodava no sandbox dele:
+
+```
+error: Failed to initialize cache at AppData/Local/uv/cache
+  Caused by: ... sdists-v9/.git : Acesso negado. (os error 5)
+```
+
+Sondagem posterior mediu as fronteiras reais do `--sandbox workspace-write`:
+
+| Alvo | Resultado medido |
+|---|---|
+| escrever no worktree | permitido |
+| escrever em TEMP | permitido |
+| escrever no cache global do uv | **negado** |
+| rede | **desabilitada** -- `SSL connection could not be established` |
+
+Nao era ACL do host: era o sandbox cumprindo o desenho. Liberar a permissao do
+cache global nao resolveria, e o operario nao tinha como distinguir os dois
+casos de dentro da caixa -- ele ofereceu as duas leituras, o que estava certo.
+
+O cache em `TEMP/genuino-uv-cache` foi aquecido pelo gerente, que tem rede.
+Verificado: 77 MB, e um projeto limpo criou o venv inteiro com
+`uv sync --offline` apontando so para ele, exit 0.
 
 ## STOP CONDITIONS
 
 - Alterar qualquer arquivo em `mcp/tests/` e violacao de oraculo: os testes de
   aceitacao sao do gerente. Adicionar teste proprio e permitido apenas fora
   desse caminho, e nunca enfraquecendo os existentes.
-- Escrever fora de `mcp/src/genuino_mcp/gates.py` reprova a iteracao.
+- Escrever fora de `mcp/src/genuino_mcp/gates.py` reprova a iteracao. Isso vale
+  inclusive para arquivo de cache ou diretorio temporario criado no worktree: o
+  motor roda `git add -A` antes de comparar, e o que nao estiver no `.gitignore`
+  aparece como violacao nomeada.
 - Dependencia nova: BLOCKED. `re` ja esta importado no modulo, e um parser de
   linguagem inteiro seria inflacao -- a funcao e heuristica declarada, nao
   analisador sintatico.
