@@ -35,11 +35,36 @@ IGNORED_DIRS = frozenset(
 # Extensoes binarias: varrer bytes por regex de texto produz ruido, nao achado.
 BINARY_SUFFIXES = frozenset(
     {
-        ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".svg",
-        ".zip", ".gz", ".tar", ".7z", ".rar",
-        ".pdf", ".woff", ".woff2", ".ttf", ".otf", ".eot",
-        ".exe", ".dll", ".so", ".dylib", ".pyc", ".class", ".jar",
-        ".mp4", ".mp3", ".wav", ".avi", ".mov",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".ico",
+        ".webp",
+        ".svg",
+        ".zip",
+        ".gz",
+        ".tar",
+        ".7z",
+        ".rar",
+        ".pdf",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".otf",
+        ".eot",
+        ".exe",
+        ".dll",
+        ".so",
+        ".dylib",
+        ".pyc",
+        ".class",
+        ".jar",
+        ".mp4",
+        ".mp3",
+        ".wav",
+        ".avi",
+        ".mov",
     }
 )
 
@@ -105,11 +130,7 @@ def _git_tracked_files(root: Path) -> list[Path] | None:
     if proc.returncode != 0:
         return None
 
-    return [
-        root / line.strip()
-        for line in proc.stdout.splitlines()
-        if line.strip()
-    ]
+    return [root / line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
 def iter_text_files(root: Path, extra_ignores: Iterable[str] = ()) -> list[Path]:
@@ -139,5 +160,3 @@ def read_lines(path: Path) -> list[str]:
         return path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
-
-

@@ -51,9 +51,7 @@ async def main() -> int:
             failures.append(f"tools ausentes: {sorted(missing)}")
 
         # O caso que originou o servidor: a API v2 existe, a v1 nao.
-        v2 = await client.call_tool(
-            "verify_python_symbol", {"dotted": "mcp.server.MCPServer"}
-        )
+        v2 = await client.call_tool("verify_python_symbol", {"dotted": "mcp.server.MCPServer"})
         status_v2 = (v2.structured_content or {}).get("status")
         print(f"mcp.server.MCPServer (v2 atual)      -> {status_v2}")
         if status_v2 != "PASS":

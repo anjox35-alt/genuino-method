@@ -51,6 +51,12 @@ jobs:
       - name: Lint
         run: uv run ruff check .
 
+      # Formatacao entra como gate porque, sem gate, ela e opiniao: qualquer
+      # `ruff format` futuro reabre um diff cosmetico espalhado por arquivos que
+      # nada tinham a ver com a mudanca, e o ruido esconde a linha que importa.
+      - name: Format
+        run: uv run ruff format --check .
+
       - name: Tests
         run: uv run pytest
 

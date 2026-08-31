@@ -67,7 +67,8 @@ def test_toda_tool_tem_descricao_nao_vazia() -> None:
 def test_scan_secrets_pelo_protocolo_reprova_token(tmp_path: Path) -> None:
     (tmp_path / "vaza.py").write_text(
         # genuino:fixture: literal falso, existe para provar que o gate reprova
-        'K = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"\n', encoding="utf-8"
+        'K = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"\n',
+        encoding="utf-8",
     )
     payload = _run(_call("scan_secrets", {"root": str(tmp_path)}))
     assert payload["status"] == "FAIL"
@@ -82,7 +83,8 @@ def test_verify_python_symbol_pelo_protocolo() -> None:
 def test_verify_publish_bloqueia_quando_um_gate_reprova(tmp_path: Path) -> None:
     (tmp_path / "vaza.py").write_text(
         # genuino:fixture: literal falso, existe para provar que o gate reprova
-        'K = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"\n', encoding="utf-8"
+        'K = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"\n',
+        encoding="utf-8",
     )
     payload = _run(_call("verify_publish", {"root": str(tmp_path)}))
     assert payload["status"] == "FAIL"

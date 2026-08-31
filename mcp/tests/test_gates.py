@@ -73,7 +73,8 @@ def test_scan_secrets_respeita_allow_paths(tmp_path: Path) -> None:
     fixtures.mkdir()
     (fixtures / "leak.txt").write_text(
         # genuino:fixture: literal falso, existe para provar que o gate reprova
-        "AKIAIOSFODNN7SECRET1\n", encoding="utf-8"
+        "AKIAIOSFODNN7SECRET1\n",
+        encoding="utf-8",
     )
     assert gates.scan_secrets(tmp_path).status == gates.FAIL
     assert gates.scan_secrets(tmp_path, allow_paths=["fixtures/"]).status == gates.PASS
@@ -92,8 +93,7 @@ def test_scan_secrets_ignora_diretorio_gerado(tmp_path: Path) -> None:
 
 def test_scan_secrets_isenta_linha_com_marcador_de_fixture(tmp_path: Path) -> None:
     (tmp_path / "test_algo.py").write_text(
-        '# genuino:fixture: literal falso\n'
-        'K = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"\n',
+        '# genuino:fixture: literal falso\nK = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"\n',
         encoding="utf-8",
     )
     assert gates.scan_secrets(tmp_path).status == gates.PASS
@@ -129,18 +129,14 @@ def test_marcador_isenta_so_a_linha_declarada(tmp_path: Path) -> None:
 
 def test_check_bloat_reprova_arquivo_longo(tmp_path: Path) -> None:
     (tmp_path / "gigante.py").write_text("x = 1\n" * 50, encoding="utf-8")
-    result = gates.check_bloat(
-        tmp_path, gates.BloatThresholds(max_file_lines=10)
-    )
+    result = gates.check_bloat(tmp_path, gates.BloatThresholds(max_file_lines=10))
     assert result.status == gates.FAIL
     assert any(f.rule == "arquivo-longo" for f in result.findings)
 
 
 def test_check_bloat_reprova_funcao_longa(tmp_path: Path) -> None:
     corpo = "\n".join(f"    a{i} = {i}" for i in range(40))
-    (tmp_path / "longa.py").write_text(
-        f"def enorme():\n{corpo}\n", encoding="utf-8"
-    )
+    (tmp_path / "longa.py").write_text(f"def enorme():\n{corpo}\n", encoding="utf-8")
     result = gates.check_bloat(
         tmp_path, gates.BloatThresholds(max_file_lines=9999, max_function_lines=10)
     )
@@ -166,9 +162,7 @@ def test_check_bloat_reprova_bloco_duplicado(tmp_path: Path) -> None:
 
 
 def test_check_bloat_aprova_codigo_enxuto(tmp_path: Path) -> None:
-    (tmp_path / "ok.py").write_text(
-        "def soma(a, b):\n    return a + b\n", encoding="utf-8"
-    )
+    (tmp_path / "ok.py").write_text("def soma(a, b):\n    return a + b\n", encoding="utf-8")
     result = gates.check_bloat(tmp_path)
     assert result.status == gates.PASS
 
@@ -370,9 +364,7 @@ def test_verify_node_package_reprova_pacote_ausente(tmp_path: Path) -> None:
 def test_verify_node_package_le_versao_resolvida(tmp_path: Path) -> None:
     pkg = tmp_path / "node_modules" / "alguma-lib"
     pkg.mkdir(parents=True)
-    (pkg / "package.json").write_text(
-        '{"name":"alguma-lib","version":"3.4.5"}', encoding="utf-8"
-    )
+    (pkg / "package.json").write_text('{"name":"alguma-lib","version":"3.4.5"}', encoding="utf-8")
     result = libapi.verify_node_package(tmp_path, "alguma-lib")
     assert result.status == gates.PASS
     assert "3.4.5" in result.summary
@@ -426,9 +418,7 @@ def test_funcao_longa_nao_engole_o_codigo_abaixo(tmp_path: Path) -> None:
 def test_funcao_longa_ainda_e_detectada_com_chaves(tmp_path: Path) -> None:
     """A correcao nao pode virar cegueira: funcao grande de verdade reprova."""
     corpo = "\n".join(f"    Write-Output {i}" for i in range(60))
-    (tmp_path / "grande.ps1").write_text(
-        f"function Enorme {{\n{corpo}\n}}\n", encoding="utf-8"
-    )
+    (tmp_path / "grande.ps1").write_text(f"function Enorme {{\n{corpo}\n}}\n", encoding="utf-8")
     result = gates.check_bloat(
         tmp_path, gates.BloatThresholds(max_file_lines=9999, max_function_lines=20)
     )

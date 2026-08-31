@@ -95,9 +95,7 @@ def scan_secrets(root: Path, allow_paths: Sequence[str] = ()) -> GateResult:
                 excerpt = line.strip()[:200]
                 if _looks_like_placeholder(excerpt):
                     continue
-                findings.append(
-                    Finding(path=rel, line=index + 1, rule=rule, excerpt=excerpt)
-                )
+                findings.append(Finding(path=rel, line=index + 1, rule=rule, excerpt=excerpt))
 
     if findings:
         return GateResult(
@@ -113,5 +111,3 @@ def scan_secrets(root: Path, allow_paths: Sequence[str] = ()) -> GateResult:
             "Ausencia de achado nao prova ausencia de segredo.",
         ],
     )
-
-
