@@ -1,0 +1,135 @@
+# Catálogo de fontes primárias e oficiais do contrato
+
+Data de montagem do catálogo: 2026-08-15. A disponibilidade HTTP destes endereços **não** é conferida por nenhum gate: `tests/validate_candidate_v45.py` valida apenas presença e esquema `https://`. Uma sondagem externa nessa data observou `403` em dois endereços e timeout no endereço do Planalto — resultado que não prova ausência do documento, mas também não sustenta uma alegação de disponibilidade. Antes de fundamentar decisão, abrir a fonte e confirmar identidade, versão e vigência.
+
+Este catálogo sustenta as classes de regra; não autoriza copiar configuração sem validar versão, produto, ambiente e contexto. Em uma entrega, registrar a fonte exata realmente usada e a evidência local correspondente.
+
+- [Alistair Cockburn - artigo original de Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture) — autor-ou-publicacao-primaria
+- [DeepMind - Flamingo, artigo original](https://arxiv.org/abs/2204.14198) — autor-ou-publicacao-primaria
+- [DeepSeek-R1 - artigo original](https://arxiv.org/abs/2501.12948) — autor-ou-publicacao-primaria
+- [Kief Morris/Martin Fowler - Immutable Server](https://martinfowler.com/bliki/ImmutableServer.html) — autor-ou-publicacao-primaria
+- [Lewis et al. - Retrieval-Augmented Generation, artigo original](https://arxiv.org/abs/2005.11401) — autor-ou-publicacao-primaria
+- [Martin Fowler - Blue Green Deployment](https://martinfowler.com/bliki/BlueGreenDeployment.html) — autor-ou-publicacao-primaria
+- [Martin Fowler - Continuous Integration e blue-green](https://martinfowler.com/articles/continuousIntegration.html) — autor-ou-publicacao-primaria
+- [Martin Fowler - Legacy Mimic e citação do padrão de Eric Evans](https://martinfowler.com/articles/patterns-legacy-displacement/legacy-mimic.html) — autor-ou-publicacao-primaria
+- [Martin Fowler - Microservice Premium](https://martinfowler.com/bliki/MicroservicePremium.html) — autor-ou-publicacao-primaria
+- [Martin Fowler - Monolith First](https://martinfowler.com/bliki/MonolithFirst.html) — autor-ou-publicacao-primaria
+- [Martin Fowler e James Lewis - decentralized data management](https://martinfowler.com/articles/microservices.html) — autor-ou-publicacao-primaria
+- [Packer et al. - MemGPT, artigo original](https://arxiv.org/abs/2310.08560) — autor-ou-publicacao-primaria
+- [Switch Transformers - artigo original, JMLR](https://jmlr.org/papers/volume23/21-0998/21-0998.pdf) — autor-ou-publicacao-primaria
+- [Yao et al. - ReAct, artigo original](https://arxiv.org/abs/2210.03629) — autor-ou-publicacao-primaria
+- [Zheng et al. - Judging LLM-as-a-Judge, artigo original](https://arxiv.org/abs/2306.05685) — autor-ou-publicacao-primaria
+- [Zhou et al. 2026 - Beyond Chunk-Then-Embed](https://arxiv.org/abs/2602.16974) — autor-ou-publicacao-primaria
+- [AWS - API Composition para consultas distribuídas](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/api-composition.html) — documentacao-oficial-ou-projeto-primario
+- [AWS - Anti-corruption layer](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/acl.html) — documentacao-oficial-ou-projeto-primario
+- [AWS - Choreography](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-integrating-microservices/choreography.html) — documentacao-oficial-ou-projeto-primario
+- [AWS - Scatter-Gather](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/scatter-gather.html) — documentacao-oficial-ou-projeto-primario
+- [AWS - Serverless](https://aws.amazon.com/serverless/) — documentacao-oficial-ou-projeto-primario
+- [AWS - What is Serverless Computing?](https://aws.amazon.com/what-is/serverless-computing/) — documentacao-oficial-ou-projeto-primario
+- [AWS Builders’ Library - APIs idempotentes](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/) — documentacao-oficial-ou-projeto-primario
+- [AWS Builders’ Library - Caching challenges and strategies](https://aws.amazon.com/builders-library/caching-challenges-and-strategies/) — documentacao-oficial-ou-projeto-primario
+- [AWS Builders’ Library - Timeouts, retries and backoff with jitter](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/) — documentacao-oficial-ou-projeto-primario
+- [AWS Prescriptive Guidance - Hexagonal Architecture](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/hexagonal-architecture.html) — documentacao-oficial-ou-projeto-primario
+- [AWS Prescriptive Guidance - Transactional Outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html) — documentacao-oficial-ou-projeto-primario
+- [AWS Route 53 - DNS failover e health checks](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/dns-failover.html) — documentacao-oficial-ou-projeto-primario
+- [AWS Route 53 - TTL de registros de failover](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/resource-record-sets-values-failover.html) — documentacao-oficial-ou-projeto-primario
+- [AWS Serverless - transitioning to EDA](https://docs.aws.amazon.com/serverless/latest/devguide/serverless-transition.html) — documentacao-oficial-ou-projeto-primario
+- [AWS Well-Architected - Consistent hashing](https://docs.aws.amazon.com/wellarchitected/latest/reducing-scope-of-impact-with-cell-based-architecture/consistent-hashing.html) — documentacao-oficial-ou-projeto-primario
+- [AWS Well-Architected - Event-driven architectures](https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/event-driven-architectures.html) — documentacao-oficial-ou-projeto-primario
+- [Amazon API Gateway - documentação](https://docs.aws.amazon.com/apigateway/latest/developerguide/welcome.html) — documentacao-oficial-ou-projeto-primario
+- [Azure - API gateways](https://learn.microsoft.com/en-us/azure/architecture/microservices/design/gateway) — documentacao-oficial-ou-projeto-primario
+- [Azure - Anti-Corruption Layer Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/anti-corruption-layer) — documentacao-oficial-ou-projeto-primario
+- [Azure - Cache-Aside Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside) — documentacao-oficial-ou-projeto-primario
+- [Azure - Gateway Aggregation Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/gateway-aggregation) — documentacao-oficial-ou-projeto-primario
+- [Azure - Microservices Assessment and Readiness](https://learn.microsoft.com/en-us/azure/architecture/guide/technology-choices/microservices-assessment) — documentacao-oficial-ou-projeto-primario
+- [Azure - Microservices architecture style](https://learn.microsoft.com/en-us/azure/architecture/guide/architecture-styles/microservices) — documentacao-oficial-ou-projeto-primario
+- [Azure - Reliability testing](https://learn.microsoft.com/en-us/azure/well-architected/reliability/reliability-test) — documentacao-oficial-ou-projeto-primario
+- [Azure - Sidecar Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/sidecar) — documentacao-oficial-ou-projeto-primario
+- [Azure - catálogo oficial de Cloud Design Patterns](https://learn.microsoft.com/en-us/azure/architecture/patterns/) — documentacao-oficial-ou-projeto-primario
+- [Azure API Management - conceitos do gateway](https://learn.microsoft.com/en-us/azure/api-management/api-management-key-concepts) — documentacao-oficial-ou-projeto-primario
+- [Azure Architecture Center - Ambassador Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/ambassador) — documentacao-oficial-ou-projeto-primario
+- [Azure Architecture Center - Backends for Frontends](https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends) — documentacao-oficial-ou-projeto-primario
+- [Azure Architecture Center - Bulkhead Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead) — documentacao-oficial-ou-projeto-primario
+- [Azure Well-Architected - Reliability principles](https://learn.microsoft.com/en-us/azure/well-architected/reliability/principles) — documentacao-oficial-ou-projeto-primario
+- [CNCF - Cloud Native Technology](https://glossary.cncf.io/cloud-native-tech/) — documentacao-oficial-ou-projeto-primario
+- [CNCF - definição original de service mesh](https://www.cncf.io/blog/2017/04/26/service-mesh-critical-component-cloud-native-stack/) — documentacao-oficial-ou-projeto-primario
+- [CNCF Glossary - Portability](https://glossary.cncf.io/portability/) — documentacao-oficial-ou-projeto-primario
+- [CNCF Glossary - Service Mesh](https://glossary.cncf.io/service-mesh/) — documentacao-oficial-ou-projeto-primario
+- [DeepMind - visão geral oficial do Flamingo](https://deepmind.google/blog/tackling-multiple-tasks-with-a-single-visual-language-model/) — documentacao-oficial-ou-projeto-primario
+- [Docker - visão geral](https://docs.docker.com/get-started/docker-overview/) — documentacao-oficial-ou-projeto-primario
+- [Google Cloud - trade-off entre benefícios de fornecedor único e lock-in](https://cloud.google.com/blog/topics/hybrid-cloud/a-cios-guide-to-the-cloud-hybrid-and-human-solutions-to-avoid-trade-offs) — documentacao-oficial-ou-projeto-primario
+- [Google Cloud Architecture Center - Hybrid and multicloud patterns](https://cloud.google.com/architecture/hybrid-multicloud-patterns-and-practices) — documentacao-oficial-ou-projeto-primario
+- [Google Cloud Service Mesh - visão geral](https://cloud.google.com/products/service-mesh) — documentacao-oficial-ou-projeto-primario
+- [Google Research - GShard](https://research.google/pubs/gshard-scaling-giant-models-with-conditional-computation-and-automatic-sharding/) — documentacao-oficial-ou-projeto-primario
+- [Google Research - RAG ainda pode alucinar](https://research.google/blog/making-llms-more-accurate-by-using-all-of-their-layers/) — documentacao-oficial-ou-projeto-primario
+- [Google Research - sufficient context e alucinações em RAG](https://research.google/blog/deeper-insights-into-retrieval-augmented-generation-the-role-of-sufficient-context/) — documentacao-oficial-ou-projeto-primario
+- [Kubernetes - Containers](https://kubernetes.io/docs/concepts/containers/) — documentacao-oficial-ou-projeto-primario
+- [Kubernetes - Pods com múltiplos containers](https://kubernetes.io/docs/concepts/workloads/pods/) — documentacao-oficial-ou-projeto-primario
+- [Kubernetes - Sidecar Containers](https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/) — documentacao-oficial-ou-projeto-primario
+- [Kubernetes - documentação e definição de orquestrador](https://kubernetes.io/docs/home/) — documentacao-oficial-ou-projeto-primario
+- [Meta AI - Llama 3.2 para edge e vision](https://ai.meta.com/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/) — documentacao-oficial-ou-projeto-primario
+- [Meta AI - modelos quantizados e trade-off de qualidade](https://ai.meta.com/blog/meta-llama-quantized-lightweight-models/) — documentacao-oficial-ou-projeto-primario
+- [Microsoft .NET - arquiteturas web monolíticas](https://learn.microsoft.com/en-us/dotnet/architecture/modern-web-apps-azure/common-web-application-architectures) — documentacao-oficial-ou-projeto-primario
+- [Microsoft Learn - chunking de documentos e alternativas](https://learn.microsoft.com/en-us/azure/search/vector-search-how-to-chunk-documents) — documentacao-oficial-ou-projeto-primario
+- [Microsoft Learn - semantic chunking com Document Layout](https://learn.microsoft.com/en-us/azure/search/search-how-to-semantic-chunking) — documentacao-oficial-ou-projeto-primario
+- [Microsoft Purview - retenção e exclusão permanente](https://learn.microsoft.com/en-us/purview/retention) — documentacao-oficial-ou-projeto-primario
+- [Microsoft Research - AutoGen, artigo/projeto](https://www.microsoft.com/en-us/research/publication/autogen-enabling-next-gen-llm-applications-via-multi-agent-conversation-framework/) — documentacao-oficial-ou-projeto-primario
+- [Microsoft Research - Guidelines for Human-AI Interaction](https://www.microsoft.com/en-us/research/wp-content/uploads/2019/01/Guidelines-for-Human-AI-Interaction-camera-ready.pdf) — documentacao-oficial-ou-projeto-primario
+- [Microsoft Research - Phi-3 Technical Report](https://www.microsoft.com/en-us/research/publication/phi-3-technical-report-a-highly-capable-language-model-locally-on-your-phone/) — documentacao-oficial-ou-projeto-primario
+- [OpenAI - Learning to reason with LLMs](https://openai.com/index/learning-to-reason-with-llms/) — documentacao-oficial-ou-projeto-primario
+- [OpenAI API - Evaluation best practices e calibração humana](https://developers.openai.com/api/docs/guides/evaluation-best-practices) — documentacao-oficial-ou-projeto-primario
+- [OpenAI API - Function calling](https://developers.openai.com/api/docs/guides/function-calling) — documentacao-oficial-ou-projeto-primario
+- [OpenAI API - Model selection](https://developers.openai.com/api/docs/guides/model-selection) — documentacao-oficial-ou-projeto-primario
+- [OpenAI API - Prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering) — documentacao-oficial-ou-projeto-primario
+- [OpenAI API - Reasoning best practices](https://developers.openai.com/api/docs/guides/reasoning-best-practices) — documentacao-oficial-ou-projeto-primario
+- [OpenAI API - Reasoning models](https://developers.openai.com/api/docs/guides/reasoning) — documentacao-oficial-ou-projeto-primario
+- [OpenAI API - Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs) — documentacao-oficial-ou-projeto-primario
+- [OpenTelemetry - GenAI observability e conteúdo sensível opt-in](https://opentelemetry.io/blog/2026/genai-observability/) — documentacao-oficial-ou-projeto-primario
+- [CNCF Security Whitepaper - FaaS](https://tag-security.cncf.io/community/resources/security-whitepaper/v2/cloud-native-security-whitepaper/) — fonte-de-apoio-a-confirmar-na-execucao
+- [Chris Richardson - API Gateway e variação BFF](https://microservices.io/patterns/apigateway.html) — fonte-de-apoio-a-confirmar-na-execucao
+- [Chris Richardson - Database per Service](https://microservices.io/patterns/data/database-per-service.html) — fonte-de-apoio-a-confirmar-na-execucao
+- [Chris Richardson - Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) — fonte-de-apoio-a-confirmar-na-execucao
+- [NIST NCCoE - risco mitigado, não eliminado](https://www.nccoe.nist.gov/manufacturing/responding-and-recovering-cyber-attack) — fonte-de-apoio-a-confirmar-na-execucao
+- [OWASP - LLM01:2025 Prompt Injection](https://genai.owasp.org/llmrisk/llm01-prompt-injection/) — fonte-de-apoio-a-confirmar-na-execucao
+- [OWASP - LLM06:2025 Excessive Agency](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/) — fonte-de-apoio-a-confirmar-na-execucao
+- [OWASP - Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) — fonte-de-apoio-a-confirmar-na-execucao
+- [OWASP API Security 2023 - Unrestricted Resource Consumption](https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/) — fonte-de-apoio-a-confirmar-na-execucao
+- [OWASP Denial of Service Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Denial_of_Service_Cheat_Sheet.html) — fonte-de-apoio-a-confirmar-na-execucao
+- [OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html) — fonte-de-apoio-a-confirmar-na-execucao
+- [OWASP Session Management Cheat Sheet - limites do WAF](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html) — fonte-de-apoio-a-confirmar-na-execucao
+- [OWASP Top 10:2025](https://owasp.org/Top10/2025/) — fonte-de-apoio-a-confirmar-na-execucao
+- [OWASP WSTG - Map Application Architecture/WAF](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/10-Map_Application_Architecture) — fonte-de-apoio-a-confirmar-na-execucao
+- [OpenAPI Initiative - Design-first best practices](https://learn.openapis.org/best-practices.html) — fonte-de-apoio-a-confirmar-na-execucao
+- [Redis - Cluster specification](https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/) — fonte-de-apoio-a-confirmar-na-execucao
+- [Redis - escala e hash slots](https://redis.io/docs/latest/operate/oss_and_stack/management/scaling/) — fonte-de-apoio-a-confirmar-na-execucao
+- [Brasil - Lei 13.709/2018, LGPD, arts. 15-16](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/L13709compilado.htm) — norma-ou-organizacao-autoritativa
+- [CISA - Best Practices for Event Logging and Threat Detection](https://www.cisa.gov/resources-tools/resources/best-practices-event-logging-and-threat-detection) — norma-ou-organizacao-autoritativa
+- [CISA - Guidance for SIEM and SOAR Implementation (2025)](https://www.cisa.gov/resources-tools/resources/guidance-siem-and-soar-implementation) — norma-ou-organizacao-autoritativa
+- [CISA - just-in-time e just-enough access](https://www.cisa.gov/news-events/cybersecurity-advisories/aa24-038a) — norma-ou-organizacao-autoritativa
+- [CISA Zero Trust Maturity Model v2.0](https://www.cisa.gov/zero-trust-maturity-model) — norma-ou-organizacao-autoritativa
+- [CISA/NSA - IAM Recommended Best Practices for Administrators](https://www.cisa.gov/sites/default/files/2023-12/ESF%20IDENTITY%20AND%20ACCESS%20MANAGEMENT%20RECOMMENDED%20BEST%20PRACTICES%20FOR%20ADMINISTRATORS%20PP-23-0248_508C.pdf) — norma-ou-organizacao-autoritativa
+- [NIST - Measuring and Improving Defense-in-Depth](https://www.nist.gov/publications/measuring-and-improving-effectiveness-defense-depth-postures) — norma-ou-organizacao-autoritativa
+- [NIST AI 600-1 - human moderation e configuração humano-IA](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf) — norma-ou-organizacao-autoritativa
+- [NIST CSRC Glossary - defense-in-depth](https://csrc.nist.gov/glossary/term/defense_in_depth) — norma-ou-organizacao-autoritativa
+- [NIST RBAC Project](https://csrc.nist.gov/projects/role-based-access-control) — norma-ou-organizacao-autoritativa
+- [NIST SP 1800-35 (final)](https://csrc.nist.gov/pubs/sp/1800/35/final) — norma-ou-organizacao-autoritativa
+- [NIST SP 800-162 - ABAC](https://csrc.nist.gov/pubs/sp/800/162/upd2/final) — norma-ou-organizacao-autoritativa
+- [NIST SP 800-188 - De-Identifying Government Datasets](https://csrc.nist.gov/pubs/sp/800/188/final) — norma-ou-organizacao-autoritativa
+- [NIST SP 800-205 - atributos para controle de acesso](https://csrc.nist.gov/pubs/sp/800/205/final) — norma-ou-organizacao-autoritativa
+- [NIST SP 800-207](https://csrc.nist.gov/pubs/sp/800/207/final) — norma-ou-organizacao-autoritativa
+- [NIST SP 800-215](https://csrc.nist.gov/pubs/sp/800/215/final) — norma-ou-organizacao-autoritativa
+- [NIST SP 800-53 Rev. 5 (inclui Release 5.2.0)](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final) — norma-ou-organizacao-autoritativa
+- [NIST SP 800-57 Part 1 Rev. 5](https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final) — norma-ou-organizacao-autoritativa
+- [NIST SP 800-92](https://csrc.nist.gov/pubs/sp/800/92/final) — norma-ou-organizacao-autoritativa
+- [NIST ZTA Project Overview - políticas de microsegmentação](https://pages.nist.gov/zero-trust-architecture/VolumeA/ProjectOverview.html) — norma-ou-organizacao-autoritativa
+- [OpenAPI Specification 3.2.0](https://spec.openapis.org/oas/v3.2.0.html) — norma-ou-organizacao-autoritativa
+- [OpenID Connect Core 1.0, errata set 2](https://openid.net/specs/openid-connect-core-1_0.html) — norma-ou-organizacao-autoritativa
+- [PCI SSC - publicação das PCI DSS Tokenization Guidelines](https://www.pcisecuritystandards.org/about_us/press_releases/pci-security-standards-council-releases-pci-dss-tokenization-guidelines/) — norma-ou-organizacao-autoritativa
+- [PCI SSC Document Library - padrões vigentes](https://www.pcisecuritystandards.org/document_library/) — norma-ou-organizacao-autoritativa
+- [RFC 6585 - HTTP 429](https://www.rfc-editor.org/info/rfc6585/) — norma-ou-organizacao-autoritativa
+- [RFC 6749 - OAuth 2.0](https://www.rfc-editor.org/info/rfc6749/) — norma-ou-organizacao-autoritativa
+- [RFC 8446 - TLS 1.3](https://www.rfc-editor.org/info/rfc8446/) — norma-ou-organizacao-autoritativa
+- [RFC 8705 - mTLS no OAuth 2.0](https://www.rfc-editor.org/info/rfc8705/) — norma-ou-organizacao-autoritativa
+- [RFC 9325 - uso seguro de TLS/DTLS](https://www.rfc-editor.org/info/rfc9325/) — norma-ou-organizacao-autoritativa
+- [RFC 9700 / BCP 240 - OAuth 2.0 Security BCP](https://www.rfc-editor.org/info/rfc9700/) — norma-ou-organizacao-autoritativa
+- [União Europeia - GDPR, arts. 5 e 17](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng) — norma-ou-organizacao-autoritativa

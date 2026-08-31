@@ -39,9 +39,17 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Gate de publicacao sobre: {root}")
 
+    # `method/` e conteudo normativo importado byte a byte de uma origem selada.
+    # Ele responde ao gate de selo (genuino_mcp.seal), que prova que ninguem o
+    # alterou. Medir estilo de codigo ali geraria achados sobre os quais ninguem
+    # pode agir: refatorar quebraria o selo, e reescrever artefato selado e
+    # justamente o que o metodo classifica como violacao grave.
+    #
+    # A varredura de segredos continua valendo para method/. Selado ou nao,
+    # nada com formato de credencial entra num repositorio publico.
     results = {
         "scan_secrets": scan_secrets(root),
-        "check_bloat": check_bloat(root),
+        "check_bloat": check_bloat(root, skip_paths=("method/",)),
     }
     for name, result in results.items():
         _render(name, result)

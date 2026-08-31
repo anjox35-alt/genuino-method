@@ -1,0 +1,87 @@
+name: verify-method
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "method/**"
+      - ".github/workflows/verify-method.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "method/**"
+      - ".github/workflows/verify-method.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  method:
+    name: method integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        working-directory: mcp
+        run: uv sync --locked
+
+      # O method/ e conteudo normativo. Uma edicao acidental muda o que o metodo
+      # manda fazer, em silencio, e nenhum teste de codigo pegaria isso.
+      - name: Seal check
+        working-directory: mcp
+        run: uv run python -m genuino_mcp.seal check ../method ../method/MANIFEST.sha256
+
+      # Regera o selo e exige que o manifesto commitado ja fosse o correto.
+      # Sem este passo, alguem poderia alterar o conteudo e o manifesto juntos
+      # sem que a alteracao aparecesse como decisao no diff.
+      - name: Seal has no drift
+        working-directory: mcp
+        run: uv run python -m genuino_mcp.seal write ../method ../method/MANIFEST.sha256
+
+      - name: Manifest is committed as generated
+        run: git diff --exit-code -- method/MANIFEST.sha256
+
+      - name: Validate the canonical SKILL.md
+        working-directory: mcp
+        run: |
+          uv run python -c "
+          import pathlib, sys
+          from genuino_mcp import gates
+          result = gates.validate_skill(pathlib.Path('../method/skill/SKILL.md'))
+          print(result.status, '-', result.summary)
+          for f in result.findings:
+              print(f'  {f.path}:{f.line} [{f.rule}] {f.excerpt[:120]}')
+          sys.exit(0 if result.status == 'PASS' else 1)
+          "
+
+  method-required:
+    name: method-required
+    needs: [method]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert the job succeeded
+        env:
+          METHOD_RESULT: ${{ needs.method.result }}
+        run: |
+          echo "method=$METHOD_RESULT"
+          if [ "$METHOD_RESULT" != "success" ]; then
+            echo "::error::A verificacao do metodo nao passou."
+            exit 1
+          fi

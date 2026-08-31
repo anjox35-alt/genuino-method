@@ -316,17 +316,29 @@ def check_bloat(
     root: Path,
     thresholds: BloatThresholds | None = None,
     suffixes: Sequence[str] = (".py", ".ts", ".js", ".mjs", ".ps1"),
+    skip_paths: Sequence[str] = (),
 ) -> GateResult:
     """Mede inflacao: arquivo gigante, funcao gigante e bloco repetido.
 
     Nao mede 'qualidade'. Mede tres sintomas contaveis de codigo que cresceu sem
     ser lido de novo.
+
+    `skip_paths` isenta prefixos relativos. Serve para conteudo importado e
+    selado, que e governado pelo manifesto de hash e nao pode ser refatorado sem
+    quebrar o selo -- medir estilo ali produziria um achado sobre o qual ninguem
+    pode agir.
     """
     th = thresholds or BloatThresholds()
     findings: list[Finding] = []
     block_index: dict[str, list[tuple[str, int]]] = {}
+    skipped = tuple(skip_paths)
 
-    files = [p for p in iter_text_files(root) if p.suffix.lower() in set(suffixes)]
+    files = [
+        p
+        for p in iter_text_files(root)
+        if p.suffix.lower() in set(suffixes)
+        and not any(p.relative_to(root).as_posix().startswith(s) for s in skipped)
+    ]
 
     for path in files:
         rel = path.relative_to(root).as_posix()
@@ -343,34 +355,9 @@ def check_bloat(
             )
 
         findings.extend(_find_long_functions(rel, lines, th.max_function_lines))
+        _index_blocks(block_index, rel, lines, th.max_duplicate_block_lines)
 
-        # Indexa blocos normalizados para achar repeticao entre arquivos.
-        window = th.max_duplicate_block_lines
-        meaningful = [
-            (i, ln.strip())
-            for i, ln in enumerate(lines, start=1)
-            if ln.strip() and not ln.strip().startswith(("#", "//", "*", "<#"))
-        ]
-        for idx in range(len(meaningful) - window + 1):
-            chunk = meaningful[idx : idx + window]
-            key = "\n".join(text for _, text in chunk)
-            block_index.setdefault(key, []).append((rel, chunk[0][0]))
-
-    for _key, occurrences in block_index.items():
-        if len(occurrences) >= th.min_duplicate_occurrences:
-            rel, line = occurrences[0]
-            findings.append(
-                Finding(
-                    path=rel,
-                    line=line,
-                    rule="bloco-duplicado",
-                    excerpt=(
-                        f"{len(occurrences)} ocorrencias de bloco identico de "
-                        f"{th.max_duplicate_block_lines} linhas: "
-                        + ", ".join(f"{p}:{ln}" for p, ln in occurrences[:5])
-                    ),
-                )
-            )
+    findings.extend(_report_duplicates(block_index, th))
 
     if findings:
         return GateResult(
@@ -383,6 +370,53 @@ def check_bloat(
         summary=f"Nenhum sintoma de inflacao em {len(files)} arquivo(s).",
         limits=["Mede tamanho e repeticao, nao corretude nem necessidade."],
     )
+
+
+def _index_blocks(
+    index: dict[str, list[tuple[str, int]]],
+    rel: str,
+    lines: list[str],
+    window: int,
+) -> None:
+    """Indexa janelas de linhas significativas para achar repeticao entre arquivos.
+
+    Comentario e linha vazia sao descartados: dois blocos que so diferem em
+    comentario continuam sendo o mesmo codigo duplicado.
+    """
+    meaningful = [
+        (i, ln.strip())
+        for i, ln in enumerate(lines, start=1)
+        if ln.strip() and not ln.strip().startswith(("#", "//", "*", "<#"))
+    ]
+    for start in range(len(meaningful) - window + 1):
+        chunk = meaningful[start : start + window]
+        key = "\n".join(text for _, text in chunk)
+        index.setdefault(key, []).append((rel, chunk[0][0]))
+
+
+def _report_duplicates(
+    index: dict[str, list[tuple[str, int]]],
+    thresholds: BloatThresholds,
+) -> list[Finding]:
+    """Converte o indice de blocos em achados, um por bloco repetido demais."""
+    findings: list[Finding] = []
+    for occurrences in index.values():
+        if len(occurrences) < thresholds.min_duplicate_occurrences:
+            continue
+        rel, line = occurrences[0]
+        locations = ", ".join(f"{p}:{ln}" for p, ln in occurrences[:5])
+        findings.append(
+            Finding(
+                path=rel,
+                line=line,
+                rule="bloco-duplicado",
+                excerpt=(
+                    f"{len(occurrences)} ocorrencias de bloco identico de "
+                    f"{thresholds.max_duplicate_block_lines} linhas: {locations}"
+                ),
+            )
+        )
+    return findings
 
 
 _FUNC_START = re.compile(
@@ -419,6 +453,57 @@ def _find_long_functions(rel: str, lines: list[str], max_lines: int) -> list[Fin
 
 _KEBAB = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
+# Indicadores de bloco escalar YAML, com os modificadores de chomping.
+_BLOCK_SCALAR = re.compile(r"^[|>][+-]?\d*$")
+
+
+def _parse_frontmatter(raw: str) -> tuple[dict[str, str], list[tuple[int, str]]]:
+    """Le o frontmatter aceitando bloco escalar YAML.
+
+    Uma `description:` longa e quase sempre escrita como `description: >` com as
+    linhas seguintes indentadas. Tratar cada uma dessas linhas como um campo
+    malformado faz o gate reprovar um arquivo perfeitamente valido -- e um gate
+    que reprova conteudo bom acaba desligado, que e a pior falha possivel.
+
+    Retorna os campos e a lista de linhas realmente malformadas.
+    """
+    fields: dict[str, str] = {}
+    malformed: list[tuple[int, str]] = []
+    continuation: list[str] = []
+    current: str | None = None
+
+    def flush() -> None:
+        if current is not None and continuation:
+            fields[current] = (fields.get(current, "") + " " + " ".join(continuation)).strip()
+        continuation.clear()
+
+    for lineno, line in enumerate(raw.strip().splitlines(), start=2):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        indented = line[:1] in (" ", "\t")
+        if indented and current is not None:
+            # Continuacao do bloco escalar aberto pelo campo anterior.
+            continuation.append(stripped)
+            continue
+
+        if ":" not in line:
+            malformed.append((lineno, stripped))
+            continue
+
+        flush()
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        current = key
+        # `>` ou `|` sozinhos abrem um bloco: o valor real vem nas linhas
+        # indentadas seguintes.
+        fields[key] = "" if _BLOCK_SCALAR.match(value) else value
+
+    flush()
+    return fields, malformed
+
 
 def validate_skill(path: Path) -> GateResult:
     """Valida um SKILL.md.
@@ -451,15 +536,9 @@ def validate_skill(path: Path) -> GateResult:
             findings=[Finding(rel, 1, "frontmatter-aberto", text[:120])],
         )
 
-    fields: dict[str, str] = {}
-    for lineno, line in enumerate(parts[1].strip().splitlines(), start=2):
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        if ":" not in line:
-            findings.append(Finding(rel, lineno, "frontmatter-malformado", line.strip()[:120]))
-            continue
-        key, value = line.split(":", 1)
-        fields[key.strip()] = value.strip()
+    fields, malformed = _parse_frontmatter(parts[1])
+    for lineno, text in malformed:
+        findings.append(Finding(rel, lineno, "frontmatter-malformado", text[:120]))
 
     allowed = {"name", "description"}
     for key in fields:

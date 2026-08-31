@@ -260,6 +260,48 @@ def test_validate_skill_indeterminado_se_arquivo_ausente(tmp_path: Path) -> None
     assert result.status == gates.INDETERMINADO
 
 
+def test_validate_skill_aceita_bloco_escalar_yaml(tmp_path: Path) -> None:
+    """Regressao: a skill canonica usa `description: >` com linhas indentadas.
+
+    A primeira versao deste validador tratava cada linha de continuacao como
+    campo malformado e reprovava um arquivo perfeitamente valido. Um gate que
+    reprova conteudo bom acaba desligado, que e a pior falha possivel.
+    """
+    path = _skill(
+        tmp_path,
+        """
+        ---
+        name: genuino
+        description: >
+          Primeira linha da descricao longa, que continua
+          por varias linhas indentadas ate o fim do bloco.
+        ---
+
+        # Corpo
+        """,
+    )
+    result = gates.validate_skill(path)
+    assert result.status == gates.PASS
+
+
+def test_validate_skill_ainda_reprova_lixo_nao_indentado(tmp_path: Path) -> None:
+    """A tolerancia ao bloco escalar nao pode virar tolerancia a lixo."""
+    path = _skill(
+        tmp_path,
+        """
+        ---
+        name: meu-gate
+        description: Use when algo.
+        isto nao e um campo nem continuacao
+        ---
+        corpo
+        """,
+    )
+    result = gates.validate_skill(path)
+    assert result.status == gates.FAIL
+    assert any(f.rule == "frontmatter-malformado" for f in result.findings)
+
+
 # --------------------------------------------------------------------------
 # scan_security
 # --------------------------------------------------------------------------
@@ -340,3 +382,25 @@ def test_context7_nunca_finge_ter_a_resposta() -> None:
     result = libapi.context7_guidance("react", "hooks")
     assert result.status == gates.INDETERMINADO
     assert "nao faz proxy" in " ".join(result.limits)
+
+
+def test_check_bloat_respeita_skip_paths(tmp_path: Path) -> None:
+    """Conteudo selado nao pode gerar achado sobre o qual ninguem pode agir."""
+    selado = tmp_path / "method"
+    selado.mkdir()
+    (selado / "importado.py").write_text("x = 1\n" * 50, encoding="utf-8")
+    th = gates.BloatThresholds(max_file_lines=10)
+    assert gates.check_bloat(tmp_path, th).status == gates.FAIL
+    assert gates.check_bloat(tmp_path, th, skip_paths=("method/",)).status == gates.PASS
+
+
+def test_skip_paths_do_bloat_nao_afeta_scan_secrets(tmp_path: Path) -> None:
+    """A isencao vale para estilo, jamais para credencial."""
+    selado = tmp_path / "method"
+    selado.mkdir()
+    (selado / "vaza.py").write_text(
+        # genuino:fixture: literal falso, existe para provar que o gate reprova
+        'K = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"\n',
+        encoding="utf-8",
+    )
+    assert gates.scan_secrets(tmp_path).status == gates.FAIL

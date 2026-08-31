@@ -1,0 +1,1354 @@
+{
+  "schema_version": "1.0.0",
+  "name": "Genuíno — Contrato Operacional de Arquitetura, Segurança e IA",
+  "built_at": "2026-08-15",
+  "purpose": "Classificar cada regra antes de produzir uma entrega técnica; não é uma auditoria posterior.",
+  "mandatory_statuses": [
+    "APLICAR",
+    "NAO_APLICA",
+    "BLOQUEADO",
+    "EXCECAO_AUTORIZADA"
+  ],
+  "invariantes_absolutos": [
+    "Nunca inventar contexto, integração, configuração, resultado ou evidência.",
+    "Consultar fonte primária/oficial proporcional antes de afirmar compatibilidade, versão, API, padrão ou controle atual.",
+    "Classificar os 51 gates em toda entrega técnica: APLICAR, NAO_APLICA, BLOQUEADO ou EXCECAO_AUTORIZADA.",
+    "NAO_APLICA exige justificativa específica ao sistema; BLOQUEADO exige o contexto faltante; EXCECAO_AUTORIZADA exige risco, autoridade, prazo e compensação.",
+    "Segredos não entram em código, artefato, log ou prompt; ações externas sensíveis exigem autorização humana verificável.",
+    "Não elevar sucesso local a produção sem evidência da fronteira real."
+  ],
+  "rules": [
+    {
+      "id": "ARQ-P01",
+      "familia": "design",
+      "nome": "Failover",
+      "tipo": "gate-condicional",
+      "gatilho": "Há requisito explícito de continuidade quando uma instância, zona ou rota falhar.",
+      "decisao": "ADOTAR somente se houver fluxo crítico com SLO, RTO e RPO aprovados; destino redundante com capacidade testada; health check representativo; política explícita de promoção/failback; e ensaio de falha que meça detecção, TTL/cache, reconexão e integridade de dados. NÃO aprovar “failover instantâneo por DNS” sem evidência de cliente a cliente.",
+      "evidencia_minima": "Plano de saúde, promoção, retorno seguro e RTO/RPO compatíveis.",
+      "bloqueio": "Não aprovar continuidade alegada sem teste de falha ou topologia equivalente.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "AWS Route 53 - DNS failover e health checks",
+          "url": "https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/dns-failover.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS Route 53 - TTL de registros de failover",
+          "url": "https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/resource-record-sets-values-failover.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Azure - testes de confiabilidade e definição de failover",
+          "url": "https://learn.microsoft.com/en-us/azure/well-architected/reliability/reliability-test",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P02",
+      "familia": "design",
+      "nome": "Hexagonal Architecture / Ports and Adapters",
+      "tipo": "gate-condicional",
+      "gatilho": "Há lógica de negócio com framework, banco, UI ou mensageria que pode substituir ou evoluir.",
+      "decisao": "ADOTAR quando o núcleo possui regras relevantes, precisa de testes sem infraestrutura ou há pelo menos duas implementações/uma substituição plausível numa fronteira. Exigir mapa de dependências apontando para dentro e teste do caso de uso sem rede/banco. NÃO ADOTAR abstrações especulativas para CRUD trivial sem pressão de mudança.",
+      "evidencia_minima": "Portas do domínio, adaptadores de entrada/saída e teste do núcleo sem infraestrutura.",
+      "bloqueio": "Bloquear acoplamento de regra de negócio diretamente a framework ou persistência sem decisão registrada.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Alistair Cockburn - artigo original de Hexagonal Architecture",
+          "url": "https://alistair.cockburn.us/hexagonal-architecture",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "AWS Prescriptive Guidance - Hexagonal Architecture",
+          "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/hexagonal-architecture.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P03",
+      "familia": "design",
+      "nome": "BFF - Backend for Frontend",
+      "tipo": "gate-condicional",
+      "gatilho": "Existem experiências de cliente materialmente diferentes e o backend comum causa over-fetching, acoplamento ou release acoplado.",
+      "decisao": "ADOTAR somente quando dois tipos de cliente têm contratos, cadências ou restrições mensuravelmente diferentes e existe ownership por experiência. Exigir matriz cliente×necessidade e proibir persistência/regra de negócio exclusiva no BFF sem decisão registrada. NÃO ADOTAR apenas para renomear um gateway ou criar uma camada pass-through.",
+      "evidencia_minima": "Contrato por cliente, limite de responsabilidade e prova de que BFF não duplica domínio.",
+      "bloqueio": "Não criar BFF apenas por moda; exigir benefício mensurável por canal.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Azure Architecture Center - Backends for Frontends",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Chris Richardson - API Gateway e variação BFF",
+          "url": "https://microservices.io/patterns/apigateway.html",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P04",
+      "familia": "design",
+      "nome": "API Gateway",
+      "tipo": "gate-condicional",
+      "gatilho": "Clientes externos precisam acessar múltiplos serviços ou políticas transversais.",
+      "decisao": "ADOTAR quando há múltiplos backends/consumidores e pelo menos duas políticas transversais justificadas. Exigir implantação redundante, orçamento de latência, teste de carga/falha, versionamento de políticas e bloqueio de acesso público direto aos backends quando aplicável. NÃO ADOTAR como salto extra sem necessidade mensurável.",
+      "evidencia_minima": "Contrato de borda, autenticação/autorização, limites, roteamento e observabilidade.",
+      "bloqueio": "Bloquear exposição direta de microsserviços públicos sem decisão de fronteira.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Azure Architecture Center - API gateways",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/microservices/design/gateway",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Azure API Management - conceitos do gateway",
+          "url": "https://learn.microsoft.com/en-us/azure/api-management/api-management-key-concepts",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Amazon API Gateway - documentação",
+          "url": "https://docs.aws.amazon.com/apigateway/latest/developerguide/welcome.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P05",
+      "familia": "design",
+      "nome": "Transactional Outbox",
+      "tipo": "gate-condicional",
+      "gatilho": "Uma transação local precisa publicar evento para outro sistema sem perder consistência.",
+      "decisao": "ADOTAR quando uma operação precisa alterar estado local e notificar outro sistema sem 2PC. Exigir message_id, chave de ordenação, consumidor idempotente/inbox ou deduplicação, política de retry/DLQ, métrica de idade da outbox e teste de crash após publish. REPROVAR qualquer desenho que prometa ausência de duplicatas apenas por usar outbox.",
+      "evidencia_minima": "Tabela/outbox transacional, relay, idempotência do consumidor e estratégia de retry/DLQ.",
+      "bloqueio": "Bloquear dual-write direto quando a perda ou duplicação de evento for material.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Chris Richardson - Transactional Outbox",
+          "url": "https://microservices.io/patterns/data/transactional-outbox.html",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "AWS Prescriptive Guidance - Transactional Outbox",
+          "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS Builders’ Library - APIs idempotentes",
+          "url": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P06",
+      "familia": "design",
+      "nome": "Blue-Green Deployment",
+      "tipo": "gate-condicional",
+      "gatilho": "O release exige rollback rápido e tráfego pode alternar entre versões compatíveis.",
+      "decisao": "ADOTAR quando o custo do segundo ambiente cabe no orçamento e a troca é automatizável. Exigir artefato imutável, paridade comprovada, smoke/health checks, plano de sessão/job, migração de banco backward/forward compatible e teste de rollback com dados reais mascarados. REPROVAR se “rollback” depende de restaurar banco não ensaiado.",
+      "evidencia_minima": "Compatibilidade de schema, health checks, plano de troca, rollback e custo de dois ambientes.",
+      "bloqueio": "Bloquear troca de tráfego sem compatibilidade demonstrada de banco e contratos.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Martin Fowler - Blue Green Deployment",
+          "url": "https://martinfowler.com/bliki/BlueGreenDeployment.html",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "Martin Fowler - Continuous Integration e blue-green",
+          "url": "https://martinfowler.com/articles/continuousIntegration.html",
+          "tipo": "autor-ou-publicacao-primaria"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P07",
+      "familia": "design",
+      "nome": "Sidecar",
+      "tipo": "gate-condicional",
+      "gatilho": "Há preocupação transversal por réplica que deve acompanhar o ciclo do workload.",
+      "decisao": "ADOTAR quando a capacidade deve acompanhar cada instância, precisa de proximidade/namespace compartilhado e não pertence à regra de negócio. Exigir orçamento de recursos, probes, ordem de startup/shutdown, compatibilidade de versões, telemetria separada e teste de falha do auxiliar. NÃO ADOTAR por conveniência de empacotamento apenas.",
+      "evidencia_minima": "Relação de lifecycle, custo por réplica, recursos e interface local do sidecar.",
+      "bloqueio": "Não usar sidecar para serviço compartilhado ou dependência que precisa escalar independentemente.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Kubernetes - Sidecar Containers",
+          "url": "https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Azure Architecture Center - Sidecar Pattern",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/sidecar",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P08",
+      "familia": "design",
+      "nome": "Aggregator",
+      "tipo": "gate-condicional",
+      "gatilho": "Uma resposta do cliente exige dados de várias fontes e há benefício em coordenar no servidor.",
+      "decisao": "ADOTAR quando uma jornada comprovadamente exige dados de várias fontes e a composição no cliente viola metas de round trips/complexidade. Exigir limite de fan-out, chamadas paralelas, timeout por dependência, política de parcialidade, cache quando seguro e teste de carga/degradação. NÃO ADOTAR para encadear lógica transacional distribuída.",
+      "evidencia_minima": "Contratos de fontes, paralelismo limitado, timeout parcial, fallback e payload combinado.",
+      "bloqueio": "Bloquear agregador que amplie indiscriminadamente falhas ou cause N+1 remoto.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Azure - Gateway Aggregation Pattern",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/gateway-aggregation",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS - API Composition",
+          "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/api-composition.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS - Scatter-Gather",
+          "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/scatter-gather.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P09",
+      "familia": "design",
+      "nome": "Bulkhead",
+      "tipo": "gate-condicional",
+      "gatilho": "Falha ou saturação de uma dependência pode derrubar fluxos independentes.",
+      "decisao": "ADOTAR quando análise de falhas identifica recurso compartilhado capaz de derrubar fluxos/tenants independentes. Exigir unidade de isolamento, orçamento por compartimento, política de overflow, limites de fila, métrica de saturação e teste que prove continuidade fora do compartimento falho. REPROVAR se o teste revela dependência crítica comum sem proteção.",
+      "evidencia_minima": "Pools/filas/limites separados, orçamento por dependência e comportamento degradado.",
+      "bloqueio": "Não aceitar isolamento nominal sem limite real de recurso.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Azure Architecture Center - Bulkhead Pattern",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS Well-Architected - arquitetura baseada em células e consistent hashing",
+          "url": "https://docs.aws.amazon.com/wellarchitected/latest/reducing-scope-of-impact-with-cell-based-architecture/consistent-hashing.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P10",
+      "familia": "design",
+      "nome": "Consistent Hashing",
+      "tipo": "gate-condicional",
+      "gatilho": "Chaves precisam ser distribuídas entre nós e a mudança de nós deve remapear só parte das chaves.",
+      "decisao": "ADOTAR somente com necessidade mensurada de distribuir chaves e mudar membros com churn limitado. Exigir teste de uniformidade, hot keys, percentual remapeado, replicação/falha e compatibilidade do cliente. Se Redis Cluster, documentar os 16.384 slots, resharding e hash tags; não rotular o mecanismo como consistent hashing.",
+      "evidencia_minima": "Função/hash ring, estratégia de virtual nodes, rebalanceamento e medição de distribuição.",
+      "bloqueio": "Não usar consistent hashing para problema sem particionamento ou sem medição de skew.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "AWS Well-Architected - Consistent hashing",
+          "url": "https://docs.aws.amazon.com/wellarchitected/latest/reducing-scope-of-impact-with-cell-based-architecture/consistent-hashing.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Redis - escala e hash slots",
+          "url": "https://redis.io/docs/latest/operate/oss_and_stack/management/scaling/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "Redis - Cluster specification",
+          "url": "https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P11",
+      "familia": "design",
+      "nome": "Soft Delete",
+      "tipo": "gate-condicional",
+      "gatilho": "Registros precisam de retenção, recuperação ou trilha, mas também estão sujeitos a exclusão legal.",
+      "decisao": "ADOTAR somente com caso explícito de recuperação/auditoria e base legal/prazo aprovados. Exigir escopo de dados, filtro central, autorização de restore, deleted_at, purge testado, propagação a derivados e evidência de atendimento a solicitações do titular. REPROVAR “soft delete permanente” como resposta única à LGPD/GDPR.",
+      "evidencia_minima": "Campos de deleção, filtros padrão, prazo de retenção, purge/anonimização e base legal.",
+      "bloqueio": "Bloquear soft delete usado para ignorar direito de eliminação ou retenção indefinida.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Brasil - Lei 13.709/2018, LGPD, arts. 15-16",
+          "url": "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/L13709compilado.htm",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "União Europeia - GDPR, arts. 5 e 17",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "Microsoft Purview - retenção e exclusão permanente",
+          "url": "https://learn.microsoft.com/en-us/purview/retention",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P12",
+      "familia": "design",
+      "nome": "Distributed Cache",
+      "tipo": "gate-condicional",
+      "gatilho": "Leituras repetidas justificam reduzir carga/latência com dados potencialmente defasados.",
+      "decisao": "ADOTAR após perfil mostrar leitura repetida e benchmark demonstrar benefício no p50/p95/p99 e custo. Exigir hit ratio alvo, modelo de consistência, TTL/invalidação, proteção contra stampede, fallback com limite, teste de nó/cluster e versionamento de payload. REPROVAR estimativa de multiplicador sem medição do workload.",
+      "evidencia_minima": "Chave, TTL/invalidação, consistência esperada, fallback e métricas hit/miss.",
+      "bloqueio": "Não usar cache sem dono de invalidação e sem limite de dados sensíveis.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Azure - Cache-Aside Pattern",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS Builders’ Library - Caching challenges and strategies",
+          "url": "https://aws.amazon.com/builders-library/caching-challenges-and-strategies/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARQ-P13",
+      "familia": "design",
+      "nome": "Anti-Corruption Layer",
+      "tipo": "gate-condicional",
+      "gatilho": "Sistema externo/legado tem modelo, protocolo ou semântica incompatível com o domínio interno.",
+      "decisao": "ADOTAR quando dois bounded contexts têm diferenças semânticas concretas e alterar um deles é inviável ou indesejado. Exigir tabela de mapeamento, testes de contrato em ambas as direções, tratamento de perdas/erros, ownership e critério de aposentadoria ou permanência. NÃO ADOTAR wrapper pass-through sem tradução real.",
+      "evidencia_minima": "Mapeamento explícito, tradução de erros, teste de contrato e isolamento do modelo externo.",
+      "bloqueio": "Bloquear vazamento de modelo legado para o núcleo sem justificativa.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Azure - Anti-Corruption Layer Pattern",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/anti-corruption-layer",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS - Anti-corruption layer",
+          "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/acl.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Martin Fowler - Legacy Mimic e citação do padrão de Eric Evans",
+          "url": "https://martinfowler.com/articles/patterns-legacy-displacement/legacy-mimic.html",
+          "tipo": "autor-ou-publicacao-primaria"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P01",
+      "familia": "security",
+      "nome": "Zero Trust",
+      "tipo": "gate-condicional",
+      "gatilho": "Há recurso empresarial, dado sensível ou acesso remoto/interno sujeito a risco de confiança implícita.",
+      "decisao": "A organização DEVE adotar princípios Zero Trust quando acessos cruzam limites de confiança, ambientes híbridos ou dados relevantes; DEVE começar por recursos e fluxos priorizados por risco, medir decisões e manter revogação; NÃO DEVE declarar “Zero Trust implementado” com base na compra de um produto ou em MFA isolado.",
+      "evidencia_minima": "Decisão de política por acesso, identidade, contexto, dispositivo e enforcement próximo ao recurso.",
+      "bloqueio": "Bloquear autorização baseada apenas em localização de rede quando o risco exigir ZTA.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "NIST SP 800-207",
+          "url": "https://csrc.nist.gov/pubs/sp/800/207/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST SP 1800-35 (final, 2025)",
+          "url": "https://csrc.nist.gov/pubs/sp/1800/35/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "CISA Zero Trust Maturity Model v2.0",
+          "url": "https://www.cisa.gov/zero-trust-maturity-model",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P02",
+      "familia": "security",
+      "nome": "mTLS (TLS mútuo)",
+      "tipo": "gate-condicional",
+      "gatilho": "Há comunicação serviço-a-serviço, B2B ou dispositivo com identidade verificável em ambos os lados.",
+      "decisao": "mTLS DEVE ser considerado para comunicação máquina-a-máquina de alto impacto ou entre domínios sem confiança implícita; a implantação DEVE validar nome/identidade, cadeia, finalidade e posse da chave, automatizar ciclo de vida e aplicar autorização após autenticar; NÃO DEVE tratar “handshake concluído” como autorização de negócio.",
+      "evidencia_minima": "PKI, autenticação mútua, rotação/revogação, validação de cadeia e autorização separada.",
+      "bloqueio": "Bloquear mTLS alegado sem identidade de workload e ciclo de certificado.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "RFC 8446 - TLS 1.3",
+          "url": "https://www.rfc-editor.org/info/rfc8446/",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "RFC 9325 - uso seguro de TLS/DTLS",
+          "url": "https://www.rfc-editor.org/info/rfc9325/",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "RFC 8705 - mTLS no OAuth 2.0",
+          "url": "https://www.rfc-editor.org/info/rfc8705/",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P03",
+      "familia": "security",
+      "nome": "WAF (Web Application Firewall)",
+      "tipo": "gate-condicional",
+      "gatilho": "Há aplicação HTTP/HTTPS exposta a tráfego não confiável.",
+      "decisao": "Aplicações web expostas DEVERIAM usar WAF quando o risco e a superfície justificarem defesa adicional; regras DEVEM ser testadas, versionadas, monitoradas e associadas a correção na origem; o WAF NÃO DEVE ser aceito como substituto de validação de entrada, autorização, testes de segurança ou correção de vulnerabilidades.",
+      "evidencia_minima": "Regra WAF, modo de bloqueio, logs, falsos positivos e controles corretivos no app.",
+      "bloqueio": "Bloquear conclusão de que WAF corrige vulnerabilidade de código ou autorização.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "OWASP WSTG - Map Application Architecture/WAF",
+          "url": "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/10-Map_Application_Architecture",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "OWASP Session Management Cheat Sheet - limites do WAF",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "OWASP Top 10:2025",
+          "url": "https://owasp.org/Top10/2025/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P04",
+      "familia": "security",
+      "nome": "Defense in Depth (defesa em profundidade)",
+      "tipo": "gate-condicional",
+      "gatilho": "O sistema processa ativos com impacto material e depende de controles múltiplos.",
+      "decisao": "Sistemas com impacto relevante DEVEM mapear pelo menos prevenção, detecção, resposta e recuperação nos caminhos de ataque prioritários; cada camada DEVE ter objetivo, proprietário e teste; a arquitetura NÃO DEVE assumir que quantidade de controles ou diversidade de fornecedores garante independência ou contenção.",
+      "evidencia_minima": "Camadas independentes de prevenção, detecção, resposta e recuperação, com donos e testes.",
+      "bloqueio": "Bloquear desenho que trate um único controle como proteção total.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "NIST CSRC Glossary - defense-in-depth",
+          "url": "https://csrc.nist.gov/glossary/term/defense_in_depth",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST - Measuring and Improving Defense-in-Depth",
+          "url": "https://www.nist.gov/publications/measuring-and-improving-effectiveness-defense-depth-postures",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST NCCoE - risco mitigado, não eliminado",
+          "url": "https://www.nccoe.nist.gov/manufacturing/responding-and-recovering-cyber-attack",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P05",
+      "familia": "security",
+      "nome": "Secrets Management",
+      "tipo": "gate-condicional",
+      "gatilho": "Há segredo de aplicação, credencial, chave, token ou URI sensível.",
+      "decisao": "Segredos não públicos DEVEM ter proprietário, escopo, validade, armazenamento protegido, trilha e revogação; segredos de workloads DEVERIAM ser dinâmicos ou de curta duração quando suportado; NÃO DEVEM ser embutidos em código, artefatos ou logs; rotação DEVE ser testada ponta a ponta e acionada por comprometimento, não tratada como ritual isolado.",
+      "evidencia_minima": "Cofre, identidade de workload, menor privilégio, rotação, revogação e mascaramento em logs.",
+      "bloqueio": "Bloquear segredos em código, imagem, repositório ou variável estática não governada.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "OWASP Secrets Management Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "NIST SP 800-57 Part 1 Rev. 5",
+          "url": "https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST SP 800-53 Rev. 5 (inclui Release 5.2.0)",
+          "url": "https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P06",
+      "familia": "security",
+      "nome": "Tokenization e Data Masking",
+      "tipo": "gate-condicional",
+      "gatilho": "O fluxo recebe, processa ou persiste PII, PAN ou outro dado sensível que não é necessário em claro.",
+      "decisao": "Dados sensíveis DEVEM ser minimizados antes de escolher técnica; tokenização DEVE ter domínio, vault/chaves e destokenização segregados; masking DEVE ser definido por finalidade e teste de utilidade/reidentificação; nenhum dos dois DEVE ser anunciado como anonimização, criptografia ou exclusão automática de escopo sem avaliação formal aplicável.",
+      "evidencia_minima": "Classificação de dados, tokenização/masking, vault segregado e prova de minimização de persistência.",
+      "bloqueio": "Bloquear persistência em claro sem necessidade, base legal e controle compensatório.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "PCI SSC - publicação das PCI DSS Tokenization Guidelines",
+          "url": "https://www.pcisecuritystandards.org/about_us/press_releases/pci-security-standards-council-releases-pci-dss-tokenization-guidelines/",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "PCI SSC Document Library - padrões vigentes",
+          "url": "https://www.pcisecuritystandards.org/document_library/",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST SP 800-188 - De-Identifying Government Datasets",
+          "url": "https://csrc.nist.gov/pubs/sp/800/188/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P07",
+      "familia": "security",
+      "nome": "OAuth 2.0 e OpenID Connect (OIDC)",
+      "tipo": "gate-condicional",
+      "gatilho": "Há identidade de usuário final ou cliente OAuth/OIDC acessando recurso protegido.",
+      "decisao": "Para novos clientes, DEVE-SE usar Authorization Code com PKCE e seguir o RFC 9700; fluxos implícito e Resource Owner Password Credentials NÃO DEVEM ser usados; APIs DEVEM validar token, emissor, audiência, escopo e autorização; autenticação DEVE usar OIDC ou protocolo próprio, nunca inferir identidade de um access token genérico.",
+      "evidencia_minima": "Fluxo apropriado, PKCE quando aplicável, emissor/audiência/assinatura/expiração e scopes mínimos.",
+      "bloqueio": "Bloquear uso de token sem validação completa ou fluxo OAuth obsoleto/inseguro.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "RFC 6749 - OAuth 2.0",
+          "url": "https://www.rfc-editor.org/info/rfc6749/",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "RFC 9700 / BCP 240 - OAuth 2.0 Security BCP",
+          "url": "https://www.rfc-editor.org/info/rfc9700/",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "OpenID Connect Core 1.0, errata set 2",
+          "url": "https://openid.net/specs/openid-connect-core-1_0.html",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P08",
+      "familia": "security",
+      "nome": "RBAC e ABAC",
+      "tipo": "gate-condicional",
+      "gatilho": "Uma decisão de acesso depende de papel, atributo, recurso, ação ou contexto.",
+      "decisao": "Use RBAC quando permissões forem estáveis e alinhadas a funções; use ABAC quando a decisão depender materialmente de contexto ou atributos; modelos DEVEM negar por padrão, definir precedência, proteger fontes de atributo e recertificar acessos; a escolha NÃO DEVE ser feita pela promessa abstrata de “mais granular”.",
+      "evidencia_minima": "Política versionada, atributos confiáveis, default deny, teste de decisão e registro de acesso.",
+      "bloqueio": "Bloquear autorização apenas no frontend ou baseada em atributo não verificado.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "NIST RBAC Project",
+          "url": "https://csrc.nist.gov/projects/role-based-access-control",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST SP 800-162 - ABAC",
+          "url": "https://csrc.nist.gov/pubs/sp/800/162/upd2/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST SP 800-205 - atributos para controle de acesso",
+          "url": "https://csrc.nist.gov/pubs/sp/800/205/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P09",
+      "familia": "security",
+      "nome": "Microsegmentation",
+      "tipo": "gate-condicional",
+      "gatilho": "Workloads internos podem se comunicar em rede e a movimentação lateral é risco material.",
+      "decisao": "Ambientes com workloads de sensibilidades distintas ou alto risco lateral DEVEM considerar microsegmentação; a política DEVE derivar de fluxos necessários, negar o restante, cobrir ingress/egress/administração e ser validada continuamente; a equipe NÃO DEVE equiparar criação de VLANs à contenção comprovada.",
+      "evidencia_minima": "Política allow-list por fluxo, identidade/segmento, default deny e teste de conectividade proibida.",
+      "bloqueio": "Bloquear rede plana quando dependências não precisam de conectividade ampla.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "NIST SP 1800-35 (final)",
+          "url": "https://csrc.nist.gov/pubs/sp/1800/35/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST ZTA Project Overview - políticas de microsegmentação",
+          "url": "https://pages.nist.gov/zero-trust-architecture/VolumeA/ProjectOverview.html",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST SP 800-215",
+          "url": "https://csrc.nist.gov/pubs/sp/800/215/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P10",
+      "familia": "security",
+      "nome": "Rate Limiting e Throttling",
+      "tipo": "gate-condicional",
+      "gatilho": "Há endpoint público, login, operação custosa ou risco de abuso/DoS.",
+      "decisao": "Endpoints autenticados e anônimos DEVEM ter limites proporcionais ao risco e custo, preferencialmente por múltiplas dimensões; operações caras DEVEM ter quotas, limites de concorrência/payload e timeouts; 429 DEVERIA comunicar tratamento seguro; rate limiting NÃO DEVE ser apresentado como defesa DDoS completa.",
+      "evidencia_minima": "Chave de limitação, algoritmo, limites, resposta 429/desafio, exceções e telemetria.",
+      "bloqueio": "Bloquear limite somente por IP quando NAT, identidade ou ataque distribuído invalidarem esse critério.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "OWASP API Security 2023 - Unrestricted Resource Consumption",
+          "url": "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "OWASP Denial of Service Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Denial_of_Service_Cheat_Sheet.html",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "RFC 6585 - HTTP 429",
+          "url": "https://www.rfc-editor.org/info/rfc6585/",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P11",
+      "familia": "security",
+      "nome": "Auditoria centralizada e SIEM",
+      "tipo": "gate-condicional",
+      "gatilho": "Há eventos de segurança, acesso, administração ou dados que precisam de detecção/investigação.",
+      "decisao": "Sistemas relevantes DEVEM registrar eventos de segurança definidos por casos de uso, encaminhá-los a armazenamento central protegido, sincronizar tempo, restringir acesso e testar detecções; a priorização DEVE considerar criticidade da fonte; segredos NÃO DEVEM ser registrados; “logs no SIEM” NÃO DEVE ser aceito como prova de detecção ou resposta eficaz.",
+      "evidencia_minima": "Esquema estruturado, correlação, retenção, acesso restrito, mascaramento e teste de entrega ao destino.",
+      "bloqueio": "Bloquear logs que incluam segredo/PII sem minimização ou que não sobrevivam ao workload.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "CISA - Guidance for SIEM and SOAR Implementation (2025)",
+          "url": "https://www.cisa.gov/resources-tools/resources/guidance-siem-and-soar-implementation",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "CISA - Best Practices for Event Logging and Threat Detection",
+          "url": "https://www.cisa.gov/resources-tools/resources/best-practices-event-logging-and-threat-detection",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST SP 800-92",
+          "url": "https://csrc.nist.gov/pubs/sp/800/92/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "SEC-P12",
+      "familia": "security",
+      "nome": "JIT e PAM",
+      "tipo": "gate-condicional",
+      "gatilho": "Uma pessoa precisa de privilégio administrativo, especialmente em produção.",
+      "decisao": "Acesso administrativo a ativos críticos DEVE usar identidade individual, MFA resistente ao risco, menor escopo e duração possível, aprovação proporcional e auditoria; JIT/JEA DEVERIAM substituir privilégios permanentes quando operacionalmente viável; break-glass DEVE ser testado e revisado; PAM/JIT NÃO DEVE ser descrito como eliminação de abuso privilegiado.",
+      "evidencia_minima": "Solicitação contextual, aprovação, duração, menor privilégio, trilha e revogação automática.",
+      "bloqueio": "Bloquear privilégio elevado permanente quando uma elevação temporária é viável.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "CISA/NSA - IAM Recommended Best Practices for Administrators",
+          "url": "https://www.cisa.gov/sites/default/files/2023-12/ESF%20IDENTITY%20AND%20ACCESS%20MANAGEMENT%20RECOMMENDED%20BEST%20PRACTICES%20FOR%20ADMINISTRATORS%20PP-23-0248_508C.pdf",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "CISA - just-in-time e just-enough access",
+          "url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa24-038a",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "NIST SP 800-53 Rev. 5 (inclui Release 5.2.0)",
+          "url": "https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G01",
+      "familia": "modern_arch",
+      "nome": "Microservices",
+      "tipo": "gate-condicional",
+      "gatilho": "Capacidades de negócio precisam de implantação e escala independentes e a equipe suporta o custo distribuído.",
+      "decisao": "ADOTAR somente se houver capacidade de negócio com cadência/escala/ownership independente e organização pronta para CI/CD, observabilidade, segurança e operação 24×7. Exigir prova de deploy e rollback independente, contrato versionado, propriedade de dados e SLO. NÃO ADOTAR se um monólito modular atende sem o prêmio da distribuição.",
+      "evidencia_minima": "Fronteiras de serviço, ownership, contratos, observabilidade, dados e operação por serviço.",
+      "bloqueio": "Não decompor em microsserviços sem autonomia real e prontidão operacional.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Martin Fowler e James Lewis - Microservices",
+          "url": "https://martinfowler.com/articles/microservices.html",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "Azure - Microservices architecture style",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/guide/architecture-styles/microservices",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Azure - Microservices Assessment and Readiness",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/guide/technology-choices/microservices-assessment",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G02",
+      "familia": "modern_arch",
+      "nome": "Containerization",
+      "tipo": "gate-condicional",
+      "gatilho": "O software precisa de ambiente reproduzível e empacotamento consistente.",
+      "decisao": "ADOTAR quando a unidade empacotada reduz drift ou padroniza deploy. Exigir build determinístico, imagem mínima/não-root, SBOM/scan/assinatura, limites de recursos, externalização de estado e teste no runtime alvo. Avaliar Kubernetes separadamente, apenas se scheduling, autoscaling e operação de múltiplos workloads justificarem seu plano de controle.",
+      "evidencia_minima": "Imagem declarativa, dependências fixadas, execução não privilegiada, scan e configuração externa.",
+      "bloqueio": "Bloquear imagem com segredo, tag mutável sem pin ou processo manual não reproduzível.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Kubernetes - Containers",
+          "url": "https://kubernetes.io/docs/concepts/containers/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Kubernetes - documentação e definição de orquestrador",
+          "url": "https://kubernetes.io/docs/home/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Docker - visão geral",
+          "url": "https://docs.docker.com/get-started/docker-overview/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G03",
+      "familia": "modern_arch",
+      "nome": "Serverless",
+      "tipo": "gate-condicional",
+      "gatilho": "O workload é orientado a evento e o custo/escala gerenciada supera os limites de runtime e lock-in.",
+      "decisao": "ADOTAR quando perfil de carga é variável/event-driven ou velocidade operacional supera necessidade de controle. Exigir teste de latência fria/quente, quotas/concurrency, modelo de custo em p50 e pico, retries/idempotência, limites do runtime, plano de observabilidade e estratégia de saída proporcional. NÃO ADOTAR apenas pelo rótulo moderno.",
+      "evidencia_minima": "Gatilho, idempotência, timeout, concorrência, observabilidade e plano de saída.",
+      "bloqueio": "Não escolher serverless quando limites de execução/dados contradizem o fluxo.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "AWS - What is Serverless Computing?",
+          "url": "https://aws.amazon.com/what-is/serverless-computing/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS - Serverless",
+          "url": "https://aws.amazon.com/serverless/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "CNCF Security Whitepaper - FaaS",
+          "url": "https://tag-security.cncf.io/community/resources/security-whitepaper/v2/cloud-native-security-whitepaper/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G04",
+      "familia": "modern_arch",
+      "nome": "Event-Driven Architecture",
+      "tipo": "gate-condicional",
+      "gatilho": "Produtores e consumidores devem desacoplar no tempo ou absorver picos.",
+      "decisao": "ADOTAR quando produtores e consumidores precisam de desacoplamento temporal, fan-out ou absorção de picos. Exigir schema versionado, dono, event_id, chave de ordem, semântica de entrega, idempotência, retry/DLQ, tracing e replay testado. NÃO ADOTAR para fluxo simples que exige resposta síncrona imediata e transação única.",
+      "evidencia_minima": "Contrato de evento, versionamento, idempotência, ordenação, retry/DLQ e observabilidade.",
+      "bloqueio": "Bloquear EDA sem dono do schema ou estratégia para evento duplicado/fora de ordem.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "AWS Well-Architected - Event-driven architectures",
+          "url": "https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/event-driven-architectures.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS Serverless - transitioning to EDA",
+          "url": "https://docs.aws.amazon.com/serverless/latest/devguide/serverless-transition.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS - Choreography",
+          "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-integrating-microservices/choreography.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G05",
+      "familia": "modern_arch",
+      "nome": "API Gateway + API-First",
+      "tipo": "gate-condicional",
+      "gatilho": "Uma API será consumida por mais de um cliente/equipe ou precisa ser governada antes do runtime.",
+      "decisao": "ADOTAR API-first para contratos consumidos por outra equipe/organização: exigir spec revisada, compatibilidade, exemplos e conformance test no CI. ADOTAR gateway apenas com políticas/roteamento comuns mensuráveis: exigir HA e orçamento de latência. Registrar as duas decisões separadamente; REPROVAR “gateway instalado = API-first”.",
+      "evidencia_minima": "Especificação versionada, compatibilidade, testes de contrato, políticas do gateway e documentação.",
+      "bloqueio": "Bloquear API-first declarada sem contrato verificável e compatibilidade de mudança.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "OpenAPI Specification 3.2.0",
+          "url": "https://spec.openapis.org/oas/v3.2.0.html",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "OpenAPI Initiative - Design-first best practices",
+          "url": "https://learn.openapis.org/best-practices.html",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "Azure - API gateways",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/microservices/design/gateway",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G06",
+      "familia": "modern_arch",
+      "nome": "Service Mesh",
+      "tipo": "gate-condicional",
+      "gatilho": "Muitos serviços exigem políticas de tráfego, identidade e telemetria consistentes.",
+      "decisao": "ADOTAR quando quantidade/heterogeneidade de serviços torna inviável implementar requisitos L7 uniformemente em bibliotecas/plataforma. Exigir matriz de capacidades, benchmark de latência/recursos, ownership do control plane, política de retries/timeouts única, rotação de identidade e teste de pane/degradação. NÃO ADOTAR sem equipe operadora e casos concretos.",
+      "evidencia_minima": "Separação control/data plane, custo, mTLS, políticas, observabilidade e plano de incidentes.",
+      "bloqueio": "Não adicionar service mesh quando a complexidade exceder a necessidade observada.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "CNCF Glossary - Service Mesh",
+          "url": "https://glossary.cncf.io/service-mesh/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "CNCF - definição original de service mesh",
+          "url": "https://www.cncf.io/blog/2017/04/26/service-mesh-critical-component-cloud-native-stack/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Google Cloud Service Mesh - visão geral",
+          "url": "https://cloud.google.com/products/service-mesh",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G07",
+      "familia": "modern_arch",
+      "nome": "Modular Monolith",
+      "tipo": "gate-condicional",
+      "gatilho": "O produto ainda não justifica a complexidade distribuída, mas requer fronteiras internas fortes.",
+      "decisao": "ADOTAR como padrão inicial quando autonomia de deploy/escala por capacidade não foi comprovada. Exigir mapa de módulos/bounded contexts, API interna, regras automatizadas de dependência, ownership e testes arquiteturais. Extrair serviço apenas quando métricas de cadência, escala, isolamento ou organização superarem o custo distribuído.",
+      "evidencia_minima": "Módulos com dependências permitidas, testes de fronteira, ownership e caminho de extração.",
+      "bloqueio": "Bloquear monólito modular que permite acesso transversal irrestrito entre módulos.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Martin Fowler - Monolith First",
+          "url": "https://martinfowler.com/bliki/MonolithFirst.html",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "Martin Fowler - Microservice Premium",
+          "url": "https://martinfowler.com/bliki/MicroservicePremium.html",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "Microsoft .NET - arquiteturas web monolíticas",
+          "url": "https://learn.microsoft.com/en-us/dotnet/architecture/modern-web-apps-azure/common-web-application-architectures",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G08",
+      "familia": "modern_arch",
+      "nome": "Sidecar",
+      "tipo": "gate-condicional",
+      "gatilho": "Um componente auxiliar precisa rodar 1:1 com o processo principal.",
+      "decisao": "ADOTAR se a função precisa de localidade, escala 1:1 e lifecycle acoplado; comparar quantitativamente sidecar, daemon e serviço central. Exigir recursos, segurança, probes, version skew e failure test. NÃO ADOTAR se a função pode ser compartilhada com menor custo ou é lógica de domínio.",
+      "evidencia_minima": "Lifecycle, limites de recurso, comunicação local, segurança e custo por réplica.",
+      "bloqueio": "Não duplicar sidecar quando um daemon ou serviço compartilhado atende melhor.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Kubernetes - Sidecar Containers",
+          "url": "https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Kubernetes - Pods com múltiplos containers",
+          "url": "https://kubernetes.io/docs/concepts/workloads/pods/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Azure - Sidecar Pattern",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/sidecar",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G09",
+      "familia": "modern_arch",
+      "nome": "Ambassador",
+      "tipo": "gate-condicional",
+      "gatilho": "Chamadas de saída para terceiros precisam de rede, credencial, retry ou telemetria padronizados.",
+      "decisao": "ADOTAR quando clientes não suportam requisitos de conectividade ou quando padronização multilíngue supera o custo do proxy. Exigir contrato local, ownership, budget de latência, segurança de credenciais, coordenação de timeout/retry e teste de indisponibilidade. NÃO ADOTAR como wrapper pass-through sem capacidade transversal demonstrada.",
+      "evidencia_minima": "Proxy/ambassador, autenticação, limites, retry idempotente, timeout e observabilidade.",
+      "bloqueio": "Bloquear retries cegos para operação não idempotente ou serviço externo indisponível.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Azure Architecture Center - Ambassador Pattern",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/ambassador",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Azure - catálogo oficial de Cloud Design Patterns",
+          "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G10",
+      "familia": "modern_arch",
+      "nome": "Database per Service",
+      "tipo": "gate-condicional",
+      "gatilho": "Serviços independentes precisam controlar evolução e disponibilidade de seus próprios dados.",
+      "decisao": "ADOTAR somente para serviços com autonomia real de deploy e ownership de domínio. Exigir credencial que bloqueie acesso cruzado, migração independente, estratégia de transação/consulta cross-service, eventos versionados, reconciliação e backup/restore testados. NÃO declarar conformidade se equipes consultam tabelas umas das outras ou coordenam toda migração.",
+      "evidencia_minima": "Owner do dado, API/evento de integração, consistência, migração e read model quando necessário.",
+      "bloqueio": "Bloquear acesso direto de um serviço ao banco de outro sem contrato explícito.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Chris Richardson - Database per Service",
+          "url": "https://microservices.io/patterns/data/database-per-service.html",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "Martin Fowler e James Lewis - decentralized data management",
+          "url": "https://martinfowler.com/articles/microservices.html",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "AWS - API Composition para consultas distribuídas",
+          "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/api-composition.html",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G11",
+      "familia": "modern_arch",
+      "nome": "Immutable Infrastructure",
+      "tipo": "gate-condicional",
+      "gatilho": "A infraestrutura é reproduzível por código e mudanças manuais prejudicam rastreabilidade.",
+      "decisao": "ADOTAR quando instâncias podem ser substituídas e o pipeline atende ao tempo de correção. Exigir artefato endereçável/assinado, build reproduzível, estado externalizado, patch SLA, rollout/rollback testado e proibição auditada de mudança manual. EXCEÇÕES devem ser temporárias, registradas e reconciliadas por rebuild.",
+      "evidencia_minima": "Definição versionada, artefato imutável, promoção, rollback e detecção de drift.",
+      "bloqueio": "Bloquear alteração manual em produção sem exceção aprovada e registro de reconciliação.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Kief Morris/Martin Fowler - Immutable Server",
+          "url": "https://martinfowler.com/bliki/ImmutableServer.html",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "CNCF - Cloud Native Technology",
+          "url": "https://glossary.cncf.io/cloud-native-tech/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G12",
+      "familia": "modern_arch",
+      "nome": "Resilience / Fault Tolerance",
+      "tipo": "gate-condicional",
+      "gatilho": "Uma dependência ou falha transitória pode degradar o serviço.",
+      "decisao": "ADOTAR controles por fluxo crítico, não universalmente: exigir SLO/error budget, FMEA, RTO/RPO, timeout e retry budget únicos, idempotência, degradação, redundância sem ponto comum óbvio, runbook e teste regular com critérios pass/fail. REPROVAR alegação de tolerância sem experimento que injete a falha declarada.",
+      "evidencia_minima": "Timeout, retry com backoff/jitter, circuit breaker, bulkhead, fallback e teste de falha.",
+      "bloqueio": "Bloquear retry sem timeout/orçamento ou ação de recuperação observável.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Azure Well-Architected - Reliability principles",
+          "url": "https://learn.microsoft.com/en-us/azure/well-architected/reliability/principles",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Azure - Reliability testing",
+          "url": "https://learn.microsoft.com/en-us/azure/well-architected/reliability/reliability-test",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "AWS Builders’ Library - Timeouts, retries and backoff with jitter",
+          "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "ARC-G13",
+      "familia": "modern_arch",
+      "nome": "Portability / Hybrid Cloud / lock-in trade-offs",
+      "tipo": "gate-condicional",
+      "gatilho": "Há requisito de executar em mais de um ambiente/fornecedor ou risco de lock-in material.",
+      "decisao": "ADOTAR portabilidade/híbrido somente com driver explícito - regulação, latência, continuidade, aquisição ou poder de negociação - e cenários priorizados. Exigir inventário de dependências proprietárias, RTO/custo de saída, formato/export de dados, teste periódico no segundo ambiente e TCO de skills/egress/operação. ACEITAR lock-in deliberado quando benefício e saída estão documentados.",
+      "evidencia_minima": "Interfaces portáveis, inventário de serviços proprietários, custo de saída e decisão de trade-off.",
+      "bloqueio": "Não alegar portabilidade sem testar ou documentar dependências não portáveis.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "CNCF Glossary - Portability",
+          "url": "https://glossary.cncf.io/portability/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Google Cloud - trade-off entre benefícios de fornecedor único e lock-in",
+          "url": "https://cloud.google.com/blog/topics/hybrid-cloud/a-cios-guide-to-the-cloud-hybrid-and-human-solutions-to-avoid-trade-offs",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Google Cloud Architecture Center - Hybrid and multicloud patterns",
+          "url": "https://cloud.google.com/architecture/hybrid-multicloud-patterns-and-practices",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "IA-G01",
+      "familia": "ai",
+      "nome": "Seleção e adequação do modelo",
+      "tipo": "gate-condicional",
+      "gatilho": "Um sistema de IA precisa selecionar modelo para um caso de uso e risco definidos.",
+      "decisao": "Avance somente se um candidato alcançar limiares pré-registrados em um conjunto representativo, incluindo casos adversariais, e permanecer dentro dos tetos de custo e latência com margem. Registre modelo/versão/configuração e plano de rollback. Redimensione ou pare se a decisão depender apenas de leaderboard ou média sem análise por fatia.",
+      "evidencia_minima": "Tarefas representativas, qualidade, custo, latência, privacidade, segurança e versão/model card.",
+      "bloqueio": "Bloquear seleção por benchmark genérico sem eval no caso de uso.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "NIST AI 600-1 - MS-2.3 e avaliação em condições de implantação",
+          "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "OpenAI API - Evaluation best practices",
+          "url": "https://developers.openai.com/api/docs/guides/evaluation-best-practices",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "OpenAI API - Model selection",
+          "url": "https://developers.openai.com/api/docs/guides/model-selection",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "IA-G02",
+      "familia": "ai",
+      "nome": "Mixture of Experts (MoE)",
+      "tipo": "gate-condicional",
+      "gatilho": "A escolha/uso de um modelo MoE afeta custo, latência, roteamento ou capacidade.",
+      "decisao": "Considere MoE apenas quando você treina/hospeda o modelo e a capacidade adicional supera, em teste de carga real, a complexidade de roteamento e comunicação. Em consumo de API, trate MoE como detalhe de implementação e selecione pelo resultado observado. Não avance com base em “trilhões de parâmetros” sem parâmetros ativos, throughput, qualidade e memória medidos.",
+      "evidencia_minima": "Arquitetura/model card, limites de inferência, benchmark representativo e plano de fallback.",
+      "bloqueio": "Bloquear alegação de eficiência/qualidade de MoE sem evidência do modelo e do workload.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Switch Transformers - artigo original, JMLR",
+          "url": "https://jmlr.org/papers/volume23/21-0998/21-0998.pdf",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "Google Research - GShard",
+          "url": "https://research.google/pubs/gshard-scaling-giant-models-with-conditional-computation-and-automatic-sharding/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "IA-G03",
+      "familia": "ai",
+      "nome": "Engenharia sistemática de prompts",
+      "tipo": "gate-condicional",
+      "gatilho": "A saída do modelo depende de instruções, contexto e formato controlados.",
+      "decisao": "Avance quando a versão do prompt superar o baseline com intervalo/volume suficiente, sem regressão nas fatias críticas e com testes de injeção. Pare se o comportamento essencial depender de segredo no prompt, de instrução ambígua ou de exposição de chain-of-thought; mova controles determinísticos para código/política.",
+      "evidencia_minima": "Prompt versionado, entradas delimitadas, contrato de saída, testes adversariais e controles contra injeção.",
+      "bloqueio": "Bloquear prompt monolítico sem versionamento ou mistura de instrução confiável e dado não confiável.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "OpenAI API - Prompt engineering",
+          "url": "https://developers.openai.com/api/docs/guides/prompt-engineering",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "OpenAI API - Reasoning best practices",
+          "url": "https://developers.openai.com/api/docs/guides/reasoning-best-practices",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "OWASP - LLM01:2025 Prompt Injection",
+          "url": "https://genai.owasp.org/llmrisk/llm01-prompt-injection/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        }
+      ]
+    },
+    {
+      "id": "IA-G04",
+      "familia": "ai",
+      "nome": "Retrieval-Augmented Generation (RAG)",
+      "tipo": "gate-condicional",
+      "gatilho": "O modelo precisa responder com conhecimento externo, privado ou mutável.",
+      "decisao": "Use RAG quando respostas dependem de corpus mutável, privado ou citável e o ganho sobre o baseline é comprovado. Exija ACL antes da recuperação, proveniência por trecho, teste de suficiência/conflito, resposta “não sei” e métricas retrieval→generation. Não aprove alegação de eliminação de alucinação nem uso de RAG sem avaliação ponta a ponta.",
+      "evidencia_minima": "Corpus autorizado, recuperação com citação/proveniência, avaliação de grounding e fallback para insuficiência.",
+      "bloqueio": "Bloquear RAG que não mede recuperação, contexto suficiente ou risco de resposta não ancorada.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Lewis et al. - Retrieval-Augmented Generation, artigo original",
+          "url": "https://arxiv.org/abs/2005.11401",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "Google Research - sufficient context e alucinações em RAG",
+          "url": "https://research.google/blog/deeper-insights-into-retrieval-augmented-generation-the-role-of-sufficient-context/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Google Research - RAG ainda pode alucinar",
+          "url": "https://research.google/blog/making-llms-more-accurate-by-using-all-of-their-layers/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "IA-G05",
+      "familia": "ai",
+      "nome": "Chunking semântico",
+      "tipo": "gate-condicional",
+      "gatilho": "Documentos serão indexados para recuperação semântica.",
+      "decisao": "Escolha a estratégia por experimento, comparando pelo menos baseline fixo/recursivo, estrutura/layout e semântico em consultas representativas; meça recall@k, MRR/nDCG, completude da evidência, qualidade final, tokens e custo. Aprove semantic chunking somente se estiver na fronteira qualidade-custo; reavalie por tipo documental.",
+      "evidencia_minima": "Estratégia de chunk, metadados, sobreposição quando necessária, avaliação de recuperação e custo.",
+      "bloqueio": "Bloquear chunking por tamanho arbitrário sem teste de recuperação no corpus real.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Microsoft Learn - semantic chunking com Document Layout",
+          "url": "https://learn.microsoft.com/en-us/azure/search/search-how-to-semantic-chunking",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Zhou et al. 2026 - Beyond Chunk-Then-Embed",
+          "url": "https://arxiv.org/abs/2602.16974",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "Microsoft Learn - chunking de documentos e alternativas",
+          "url": "https://learn.microsoft.com/en-us/azure/search/vector-search-how-to-chunk-documents",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "IA-G06",
+      "familia": "ai",
+      "nome": "Orquestração agêntica",
+      "tipo": "gate-condicional",
+      "gatilho": "O sistema usa agentes/múltiplas etapas para decidir ou agir.",
+      "decisao": "Use agente apenas quando houver decisão condicional não coberta com segurança por workflow determinístico e ganho mensurado sobre ele. Defina máquina de estados, orçamento/timeout, máximo de passos, stop conditions, identidade, permissões e checkpoints. Escalone a humano ou encerre diante de baixa confiança, conflito, ação irreversível ou orçamento excedido.",
+      "evidencia_minima": "Grafo de fluxo, limites de autonomia, estado, permissões por etapa, fallback e observabilidade de trace.",
+      "bloqueio": "Bloquear agente autônomo sem limites de ação, orçamento e condição de parada.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Microsoft Research - AutoGen, artigo/projeto",
+          "url": "https://www.microsoft.com/en-us/research/publication/autogen-enabling-next-gen-llm-applications-via-multi-agent-conversation-framework/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Yao et al. - ReAct, artigo original",
+          "url": "https://arxiv.org/abs/2210.03629",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "OWASP - Top 10 for Agentic Applications 2026",
+          "url": "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        }
+      ]
+    },
+    {
+      "id": "IA-G07",
+      "familia": "ai",
+      "nome": "Tool calling",
+      "tipo": "gate-condicional",
+      "gatilho": "O modelo pode chamar ferramenta, API, banco ou ação externa.",
+      "decisao": "Aprove somente com allowlist mínima, credenciais próprias e least privilege, validação determinística, timeout/retry/idempotência e aprovação humana para efeitos altos. Separe “propor chamada” de “autorizar execução”. Bloqueie argumentos fora da política e nunca permita que texto do modelo contorne ACL ou confirmação.",
+      "evidencia_minima": "Schema estrito, allow-list, validação no servidor, idempotência, autorização e recibo por chamada.",
+      "bloqueio": "Bloquear ferramenta com parâmetros livres para ação sensível ou sem autorização determinística.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "OpenAI API - Function calling",
+          "url": "https://developers.openai.com/api/docs/guides/function-calling",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "OpenAI API - Structured Outputs",
+          "url": "https://developers.openai.com/api/docs/guides/structured-outputs",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "OWASP - LLM06:2025 Excessive Agency",
+          "url": "https://genai.owasp.org/llmrisk/llm062025-excessive-agency/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        }
+      ]
+    },
+    {
+      "id": "IA-G08",
+      "familia": "ai",
+      "nome": "Modelos de raciocínio / Large Reasoning Models (LRMs)",
+      "tipo": "gate-condicional",
+      "gatilho": "A tarefa requer raciocínio intensivo e o modelo/caminho de raciocínio altera custo, latência ou segurança.",
+      "decisao": "Roteie para LRM quando a avaliação por classe de tarefa mostrar ganho material que compense orçamento e SLA; mantenha modelo rápido para casos simples. Exija resultado verificável, testes/ferramentas e limite de tokens/tempo. Nunca condicione aprovação à exposição de CoT; peça resposta concisa, fontes, premissas e verificação reproduzível.",
+      "evidencia_minima": "Modelo e versão, eval de tarefa, orçamento, latência, verificadores externos e política de não expor raciocínio privado.",
+      "bloqueio": "Bloquear promessa de raciocínio confiável sem verificação externa da resposta.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "DeepSeek-R1 - artigo original",
+          "url": "https://arxiv.org/abs/2501.12948",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "OpenAI API - Reasoning models",
+          "url": "https://developers.openai.com/api/docs/guides/reasoning",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "OpenAI - Learning to reason with LLMs",
+          "url": "https://openai.com/index/learning-to-reason-with-llms/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "IA-G09",
+      "familia": "ai",
+      "nome": "Small Language Models (SLMs) e edge",
+      "tipo": "gate-condicional",
+      "gatilho": "Há requisito de inferência local/edge, baixa latência, privacidade ou operação desconectada.",
+      "decisao": "Aprove edge/SLM após medir acurácia por fatia, TTFT, tokens/s, p95, RAM/VRAM, energia, tamanho e operação offline no hardware-alvo. Documente fallback e fluxo de dados. Rejeite claims de latência zero ou segurança automática; aplique assinatura, sandbox, criptografia, atualização e threat model do dispositivo.",
+      "evidencia_minima": "Modelo/quantização, hardware alvo, qualidade, consumo, atualização e privacidade de dados.",
+      "bloqueio": "Bloquear uso de SLM/edge sem medir qualidade e capacidade do dispositivo real.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Microsoft Research - Phi-3 Technical Report",
+          "url": "https://www.microsoft.com/en-us/research/publication/phi-3-technical-report-a-highly-capable-language-model-locally-on-your-phone/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Meta AI - Llama 3.2 para edge e vision",
+          "url": "https://ai.meta.com/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Meta AI - modelos quantizados e trade-off de qualidade",
+          "url": "https://ai.meta.com/blog/meta-llama-quantized-lightweight-models/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "IA-G10",
+      "familia": "ai",
+      "nome": "Vision-Language Models (VLMs)",
+      "tipo": "gate-condicional",
+      "gatilho": "O sistema recebe imagem, vídeo, tela ou documento visual.",
+      "decisao": "Use VLM somente se a modalidade visual elevar desempenho versus OCR/visão especializada + regras, medido em corpus real por tipo, resolução e subgrupo. Exija grounding/citação de região quando possível, abstention e revisão humana em alto risco. Isole conteúdo visual não confiável e teste instruções ocultas, manipulações e imagens degradadas.",
+      "evidencia_minima": "Modelo multimodal, dados autorizados, eval multimodal, tratamento de conteúdo sensível e limites de confiança.",
+      "bloqueio": "Bloquear decisão crítica por VLM sem validação humana ou determinística proporcional ao risco.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "DeepMind - Flamingo, artigo original",
+          "url": "https://arxiv.org/abs/2204.14198",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "DeepMind - visão geral oficial do Flamingo",
+          "url": "https://deepmind.google/blog/tackling-multiple-tasks-with-a-single-visual-language-model/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "NIST AI 600-1 - riscos multimodais e deepfakes",
+          "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "IA-G11",
+      "familia": "ai",
+      "nome": "Checkpoints e memória de longo prazo",
+      "tipo": "gate-condicional",
+      "gatilho": "O sistema persiste memória, contexto ou estado entre execuções/sessões.",
+      "decisao": "Persista apenas campos com finalidade, base de autorização/consentimento, tenant e TTL definidos. Exija proveniência, classificação, validação de admissão, criptografia, ACL, edição/exclusão, auditoria e teste de poisoning. Checkpoints devem ser versionados e retomados de modo idempotente. Não grave segredos, CoT bruto ou toda conversa por padrão.",
+      "evidencia_minima": "Schema, proveniência, TTL, revogação, isolamento por usuário/tenant e defesa contra envenenamento.",
+      "bloqueio": "Bloquear memória persistente sem política de retenção, exclusão e controle de acesso.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "Packer et al. - MemGPT, artigo original",
+          "url": "https://arxiv.org/abs/2310.08560",
+          "tipo": "autor-ou-publicacao-primaria"
+        },
+        {
+          "titulo": "OWASP - Top 10 for Agentic Applications 2026",
+          "url": "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "NIST AI 600-1 - privacidade, proveniência e revogação",
+          "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        }
+      ]
+    },
+    {
+      "id": "IA-G12",
+      "familia": "ai",
+      "nome": "Breakpoints human-in-the-loop (HITL)",
+      "tipo": "gate-condicional",
+      "gatilho": "Um agente pode executar ação financeira, destrutiva, externa, irreversível ou de alto impacto.",
+      "decisao": "Pause obrigatoriamente antes de ação irreversível, privilegiada, financeira/legal, publicação externa, uso de dado sensível ou quando confiança/evidência cair abaixo do limiar. Mostre diff e efeito, não CoT. Defina SLA, substituto, dupla aprovação quando necessário e fail-closed; meça taxa de reversão, tempo e concordância, e revise breakpoints.",
+      "evidencia_minima": "Ponto de aprovação humana, resumo da ação, identidade do aprovador, prazo, rollback e recibo.",
+      "bloqueio": "Bloquear execução autônoma sensível sem aprovação humana efetiva.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "NIST AI 600-1 - human moderation e configuração humano-IA",
+          "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+          "tipo": "norma-ou-organizacao-autoritativa"
+        },
+        {
+          "titulo": "OWASP - LLM06:2025 Excessive Agency",
+          "url": "https://genai.owasp.org/llmrisk/llm062025-excessive-agency/",
+          "tipo": "fonte-de-apoio-a-confirmar-na-execucao"
+        },
+        {
+          "titulo": "Microsoft Research - Guidelines for Human-AI Interaction",
+          "url": "https://www.microsoft.com/en-us/research/wp-content/uploads/2019/01/Guidelines-for-Human-AI-Interaction-camera-ready.pdf",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        }
+      ]
+    },
+    {
+      "id": "IA-G13",
+      "familia": "ai",
+      "nome": "Observabilidade, evals e LLM-as-judge",
+      "tipo": "gate-condicional",
+      "gatilho": "Uma aplicação de IA está em avaliação, produção ou mudança de prompt/modelo/dados.",
+      "decisao": "Avance somente com taxonomia de eventos, SLOs, dataset versionado, owner e alertas acionáveis. Redija/minimize antes da coleta; aplique RBAC, retenção e amostragem. Calibre juiz em amostra humana representativa, monitore acordo por fatia e recalcibre após mudanças. Não use LLM-as-judge como única autoridade em alto risco; combine testes determinísticos, especialistas e auditoria.",
+      "evidencia_minima": "Traces, evals versionados, conjunto representativo, métricas, avaliação humana quando necessária e privacidade de telemetria.",
+      "bloqueio": "Bloquear promoção de IA sem comparação contra baseline e critério de regressão.",
+      "fontes_primarias_ou_oficiais": [
+        {
+          "titulo": "OpenTelemetry - GenAI observability e conteúdo sensível opt-in",
+          "url": "https://opentelemetry.io/blog/2026/genai-observability/",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "OpenAI API - Evaluation best practices e calibração humana",
+          "url": "https://developers.openai.com/api/docs/guides/evaluation-best-practices",
+          "tipo": "documentacao-oficial-ou-projeto-primario"
+        },
+        {
+          "titulo": "Zheng et al. - Judging LLM-as-a-Judge, artigo original",
+          "url": "https://arxiv.org/abs/2306.05685",
+          "tipo": "autor-ou-publicacao-primaria"
+        }
+      ]
+    }
+  ]
+}

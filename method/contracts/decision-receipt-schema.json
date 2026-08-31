@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.1.0",
+  "required_top_level": [
+    "schema_version",
+    "delivery_id",
+    "scope",
+    "project_evidence",
+    "rule_decisions"
+  ],
+  "allowed_top_level": [
+    "schema_version",
+    "delivery_id",
+    "scope",
+    "project_evidence",
+    "rule_decisions",
+    "evidence_manifest"
+  ],
+  "rule_decision_fields": [
+    "rule_id",
+    "status"
+  ],
+  "allowed_rule_decision_fields": [
+    "rule_id",
+    "status",
+    "primary_sources",
+    "project_evidence",
+    "decision",
+    "reason",
+    "missing_context",
+    "request_to_user",
+    "risk",
+    "compensating_control",
+    "authorized_by",
+    "expires_at"
+  ],
+  "field_types": {
+    "schema_version": "non_empty_string",
+    "delivery_id": "non_empty_string",
+    "scope": "non_empty_string",
+    "project_evidence": "non_empty_string_array",
+    "rule_decisions": "non_empty_array",
+    "rule_id": "non_empty_string",
+    "status": "non_empty_string",
+    "primary_sources": "non_empty_string_array",
+    "decision": "non_empty_string",
+    "reason": "non_empty_string",
+    "missing_context": "non_empty_string",
+    "request_to_user": "non_empty_string",
+    "risk": "non_empty_string",
+    "compensating_control": "non_empty_string",
+    "authorized_by": "non_empty_string",
+    "expires_at": "rfc3339",
+    "evidence_manifest": "evidence_manifest_binding"
+  },
+  "evidence_by_status": {
+    "APLICAR": [
+      "primary_sources",
+      "project_evidence",
+      "decision"
+    ],
+    "NAO_APLICA": [
+      "reason"
+    ],
+    "BLOQUEADO": [
+      "missing_context",
+      "request_to_user"
+    ],
+    "EXCECAO_AUTORIZADA": [
+      "reason",
+      "risk",
+      "compensating_control",
+      "authorized_by",
+      "expires_at"
+    ]
+  }
+}
