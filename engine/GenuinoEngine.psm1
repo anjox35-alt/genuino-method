@@ -36,17 +36,30 @@ $script:RequiredMissionFields = @(
     'GATE_DA_FRONTEIRA'       # o que prova que funciona la
     'PRE_REQUISITOS_HUMANOS'  # o que o loop nao pode resolver sozinho
     'ORACULO'                 # o que o operario nao pode tocar
+    'WRITE_SET'               # o unico lugar onde o operario pode escrever
 )
 
-# ORACULO e obrigatorio porque sem ele o motor nao tem como proteger o que mede.
-# O operario recebe escrita no worktree de trabalho, e o sandbox do Codex protege
-# apenas `.git`, `.agents` e `.codex` -- nao existe forma documentada de declarar
-# caminhos protegidos adicionais. Entao a protecao acontece no lado do motor: os
-# caminhos do oraculo sao excluidos do patch antes de a medicao acontecer.
+# WRITE_SET e ORACULO existem porque o motor precisa saber o que medir e o que
+# proteger. O sandbox do Codex protege apenas `.git`, `.agents` e `.codex`, e nao
+# ha forma documentada de declarar caminhos protegidos adicionais -- entao a
+# protecao acontece do lado do motor.
 #
-# Sem esse campo, "nao altere os testes" seria promessa de prompt, e um operario
-# que enfraquecesse o teste de aceitacao produziria GREEN legitimo aos olhos do
-# motor.
+# A PRIMEIRA versao usava so o ORACULO, como blocklist: o patch era gerado
+# excluindo os caminhos do oraculo. Uma auditoria de seguranca derrubou esse
+# desenho com um cenario de tres linhas. Com `ORACULO: tests/test_x.py` e
+# `TEST_CMD: pytest tests/`, o operario nao precisa tocar o oraculo -- ele cria
+# `tests/conftest.py` AO LADO:
+#
+#     def pytest_collection_modifyitems(items):
+#         for i in items: i.add_marker(pytest.mark.skip(reason="x"))
+#
+# O conftest nao e caminho de oraculo, viaja no patch, e desabilita a suite
+# inteira. Gate verde, veredito GREEN. A mesma classe cobre `pytest.ini`,
+# `package.json`, `Makefile`, `tox.ini` -- qualquer arquivo que o TEST_CMD leia.
+#
+# Blocklist e a forma errada do problema: exige adivinhar tudo que o operario
+# poderia criar. WRITE_SET inverte para allowlist -- so o que foi declarado
+# viaja no patch, e qualquer caminho fora dele e violacao nomeada.
 
 function Get-RequiredMissionField {
     <#
@@ -317,6 +330,84 @@ function ConvertTo-OraclePath {
     )
 }
 
+function Test-PathspecMatchesTrackedFile {
+    <#
+    .SYNOPSIS
+      Verdadeiro se o pathspec casa ao menos um arquivo rastreado no commit-base.
+
+    .DESCRIPTION
+      Existe porque `git diff -- <pathspec que nao casa nada>` devolve exit 0 com
+      saida vazia. O git nao reclama de um caminho que nao existe.
+
+      Consequencia, se ninguem valida: uma missao declara `ORACULO: test/`
+      enquanto os testes vivem em `tests/`, o motor loga "Oraculo protegido:
+      test/", nao detecta violacao nenhuma, e grava `oracle_paths: ["test/"]` no
+      veredito -- como se algo estivesse protegido.
+
+      Isso nao seria falta de protecao. Seria evidencia afirmativamente falsa,
+      que e pior: um leitor do veredito conclui que o oraculo foi respeitado.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$RepoPath,
+        [Parameter(Mandatory)] [string]$Commit,
+        [Parameter(Mandatory)] [string]$Pathspec
+    )
+
+    $r = Invoke-ClosedStdinProcess -FilePath (Resolve-ExternalCommand -Name 'git') `
+        -WorkingDirectory $RepoPath `
+        -ArgumentList @('ls-tree', '-r', '--name-only', $Commit, '--', $Pathspec)
+
+    if (-not $r.Launched -or $r.ExitCode -ne 0) { return $false }
+    return -not [string]::IsNullOrWhiteSpace($r.Output)
+}
+
+function Get-PathOutsideWriteSet {
+    <#
+    .SYNOPSIS
+      Lista os arquivos que o operario tocou FORA do write-set declarado.
+
+    .DESCRIPTION
+      O complemento da allowlist. `New-FilteredPatchArgument` impede que esses
+      caminhos viajem no patch; esta funcao diz QUAIS foram, para que a violacao
+      seja nomeada em vez de silenciosamente filtrada.
+
+      A diferenca importa: filtrar sem nomear ensina o operario que sair do
+      write-set e gratuito. Nomear e reprovar ensina o contrario.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$WorktreePath,
+        [Parameter(Mandatory)] [string]$BaseCommit,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]]$WriteSetPaths
+    )
+
+    $todos = Invoke-ClosedStdinProcess -FilePath (Resolve-ExternalCommand -Name 'git') `
+        -WorkingDirectory $WorktreePath `
+        -ArgumentList @('diff', '--name-only', $BaseCommit)
+
+    if (-not $todos.Launched -or $todos.ExitCode -ne 0) {
+        return @('<INDETERMINADO: nao foi possivel listar os arquivos alterados>')
+    }
+
+    $alterados = @($todos.Output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($alterados.Count -eq 0) { return @() }
+
+    # `git diff -- <write-set>` devolve exatamente o subconjunto permitido; o que
+    # sobra da diferenca esta fora. Usar o proprio git para decidir evita
+    # reimplementar a semantica de pathspec (globs, diretorios, caixa).
+    $permitidosArgs = @('diff', '--name-only', $BaseCommit, '--') + $WriteSetPaths
+    $permitidos = Invoke-ClosedStdinProcess -FilePath (Resolve-ExternalCommand -Name 'git') `
+        -WorkingDirectory $WorktreePath -ArgumentList $permitidosArgs
+
+    if (-not $permitidos.Launched -or $permitidos.ExitCode -ne 0) {
+        return @('<INDETERMINADO: nao foi possivel avaliar o write-set>')
+    }
+
+    $dentro = @($permitidos.Output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    return @($alterados | Where-Object { $dentro -notcontains $_ })
+}
+
 function Get-OracleViolation {
     <#
     .SYNOPSIS
@@ -354,24 +445,39 @@ function Get-OracleViolation {
 function New-FilteredPatchArgument {
     <#
     .SYNOPSIS
-      Monta os argumentos de `git diff` que excluem o oraculo do patch.
+      Monta os argumentos de `git diff` que restringem o patch ao write-set.
 
     .DESCRIPTION
-      O pathspec `:(exclude)<caminho>` do git remove aqueles caminhos do
-      resultado. E o que garante que o trabalho do operario chegue ao ambiente de
-      medicao sem levar junto uma alteracao no proprio medidor.
+      ALLOWLIST, nao blocklist. O patch contem exatamente os caminhos declarados
+      em WRITE_SET e nada mais.
+
+      A versao anterior era o inverso -- incluia tudo e excluia o oraculo -- e
+      uma auditoria mostrou que blocklist e a forma errada do problema: para
+      funcionar, ela exigiria antecipar todo arquivo que o operario poderia criar
+      e que o TEST_CMD leria (`conftest.py`, `pytest.ini`, `package.json`,
+      `Makefile`...). Allowlist nao precisa antecipar nada.
+
+      O oraculo continua excluido explicitamente, mesmo estando fora do
+      write-set na pratica. Redundancia barata: se alguem declarar um write-set
+      que se sobrepoe ao oraculo, a exclusao ainda vale.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string]$BaseCommit,
-        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]]$OraclePaths,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]]$WriteSetPaths,
+        [AllowEmptyCollection()] [string[]]$OraclePaths = @(),
         [switch]$NameStatus
     )
 
+    if ($WriteSetPaths.Count -eq 0) {
+        throw 'WRITE_SET vazio: sem allowlist nao ha o que medir com seguranca.'
+    }
+
     $args = @('diff')
     if ($NameStatus) { $args += '--name-status' }
-    $args += @('--binary', $BaseCommit, '--', '.')
-    foreach ($path in $OraclePaths) { $args += ":(exclude)$path" }
+    $args += @('--binary', $BaseCommit, '--')
+    foreach ($path in $WriteSetPaths) { $args += $path }
+    foreach ($path in $OraclePaths)   { $args += ":(exclude)$path" }
     return $args
 }
 
@@ -564,5 +670,7 @@ Export-ModuleMember -Function @(
     'Test-WorktreeHasChanges'
     'ConvertTo-OraclePath'
     'Get-OracleViolation'
+    'Test-PathspecMatchesTrackedFile'
+    'Get-PathOutsideWriteSet'
     'New-FilteredPatchArgument'
 )

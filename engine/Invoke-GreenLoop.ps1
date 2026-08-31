@@ -19,8 +19,17 @@
 
   O sandbox do Codex protege `.git`, `.agents` e `.codex` de forma nativa, mas
   nao ha forma documentada de declarar caminhos protegidos adicionais. Entao a
-  protecao acontece aqui: o patch do operario e gerado EXCLUINDO os caminhos do
-  oraculo, e so entao aplicado no worktree de medicao.
+  protecao acontece aqui, e por ALLOWLIST: o patch contem exatamente os caminhos
+  declarados em WRITE_SET, e nada mais.
+
+  A versao anterior fazia o inverso -- incluia tudo e excluia o oraculo. Uma
+  auditoria derrubou isso: o operario nao precisava tocar o oraculo, bastava
+  criar um `conftest.py` AO LADO dele. Nao e caminho de oraculo, viaja no patch,
+  desabilita a suite inteira. Blocklist exigiria antecipar todo arquivo que o
+  TEST_CMD pudesse ler; allowlist nao precisa antecipar nada.
+
+  Escrever fora do WRITE_SET, ou tocar o ORACULO, REPROVA a iteracao. Antes era
+  apenas anotado, e o loop seguia -- o que tornava a violacao gratuita.
 
   CONTRATO DE TRES FAIXAS:
       0    passou
@@ -28,8 +37,8 @@
       >=2  nao foi possivel medir -- ambiente; NAO consome iteracao, aborta
 
 .PARAMETER MissionPath
-  Missao com TEST_CMD, FRONTEIRA, GATE_DA_FRONTEIRA, PRE_REQUISITOS_HUMANOS e
-  ORACULO.
+  Missao com TEST_CMD, FRONTEIRA, GATE_DA_FRONTEIRA, PRE_REQUISITOS_HUMANOS,
+  ORACULO e WRITE_SET.
 
 .PARAMETER HumanApproved
   Registra que um humano dispensou os pre-requisitos. E DECISAO, nunca fato.
@@ -145,8 +154,16 @@ if (-not $DryRun -and -not $codexPath) {
 $testCmd      = $mission['TEST_CMD']
 $boundaryGate = $mission['GATE_DA_FRONTEIRA']
 $oraclePaths  = @(ConvertTo-OraclePath -Declaration $mission['ORACULO'])
+$writeSet     = @(ConvertTo-OraclePath -Declaration $mission['WRITE_SET'])
 
-Write-Log "G0 admitiu '$missionId'. Oraculo protegido: $(if ($oraclePaths) { $oraclePaths -join ', ' } else { 'NENHUM (declarado)' })"
+if ($writeSet.Count -eq 0) {
+    Write-Log "G0 REPROVOU: WRITE_SET nao pode ser NENHUM. Sem allowlist, qualquer arquivo que o operario criar entra na medicao."
+    exit $EXIT_RED
+}
+
+Write-Log "G0 admitiu '$missionId'."
+Write-Log "  write-set: $($writeSet -join ', ')"
+Write-Log "  oraculo:   $(if ($oraclePaths) { $oraclePaths -join ', ' } else { 'NENHUM (declarado)' })"
 if ($admission.HumanDecision) {
     Write-Log 'G0: pre-requisitos dispensados por DECISAO humana. Este motor nao verificou nada disso.'
 }
@@ -177,6 +194,22 @@ try {
     # ele, nunca com um HEAD que pode ter se movido durante a execucao.
     $baseCommit = (Assert-Git -Dir $RepoRoot -Arguments @('rev-parse', 'HEAD') -What 'ler HEAD').Output.Trim()
     Write-Log "Commit-base congelado: $baseCommit"
+
+    # Cada caminho do oraculo precisa casar um arquivo que existe de verdade.
+    #
+    # `git diff -- <pathspec que nao casa nada>` devolve exit 0 e saida vazia. Um
+    # `ORACULO: test/` quando os testes vivem em `tests/` passaria por todo o
+    # mecanismo em silencio: nenhuma violacao detectada, e o veredito gravaria
+    # `oracle_paths: ["test/"]` como se algo estivesse protegido. Evidencia
+    # afirmativamente falsa e pior que protecao ausente.
+    foreach ($path in $oraclePaths) {
+        if (-not (Test-PathspecMatchesTrackedFile -RepoPath $RepoRoot -Commit $baseCommit -Pathspec $path)) {
+            Stop-Loop $EXIT_UNKNOWN "ORACULO declara '$path', que nao casa nenhum arquivo rastreado em $($baseCommit.Substring(0,7)). Corrija a declaracao: o motor nao protege o que nao encontra."
+        }
+    }
+    if ($oraclePaths.Count -gt 0) {
+        Write-Log "Oraculo validado: os $($oraclePaths.Count) caminho(s) casam arquivos rastreados."
+    }
 
     New-Worktree -Path $workTree -Branch "wt-work/$missionId-$runId" -Commit $baseCommit
     New-Worktree -Path $measTree -Branch "wt-meas/$missionId-$runId" -Commit $baseCommit
@@ -228,16 +261,36 @@ try {
         # --- congela o estado ANTES de medir ------------------------------
         Assert-Git -Dir $workTree -Arguments @('add', '-A') -What 'preparar o worktree de trabalho' | Out-Null
 
+        # --- contrato do operario: oraculo intocado, escrita dentro do write-set
+        #
+        # Antes isto era apenas anotado e o loop seguia -- entao adulterar o
+        # oraculo era gratuito: nao custava iteracao, nao reprovava, e o GREEN
+        # continuava possivel. Um operario mal-alinhado descobre o caminho barato
+        # rapido. Violacao agora REPROVA.
         $violation = @(Get-OracleViolation -WorktreePath $workTree -BaseCommit $baseCommit -OraclePaths $oraclePaths)
-        if ($violation.Count -gt 0) {
-            Set-Content -LiteralPath (Join-Path $iterDir 'VIOLACAO-DE-ORACULO.txt') -Encoding utf8 -Value (
-                @('O operario alterou arquivos declarados como oraculo:') + $violation +
-                @('', 'Essas alteracoes foram EXCLUIDAS do patch medido.'))
-            Write-Log "VIOLACAO DE ORACULO: $($violation -join ', ') -- excluida do patch."
-            $script:state.notes.Add("Iteracao ${iteration}: operario tocou o oraculo ($($violation -join ', '))")
+        $outside   = @(Get-PathOutsideWriteSet -WorktreePath $workTree -BaseCommit $baseCommit -WriteSetPaths $writeSet)
+
+        # O sentinela de nao-medicao nao pode virar acusacao: se o git falhou, o
+        # motor nao sabe se houve violacao, e run nao verificavel nao e atestavel.
+        $indeterminado = @(($violation + $outside) | Where-Object { $_ -like '<INDETERMINADO:*' })
+        if ($indeterminado.Count -gt 0) {
+            Stop-Loop $EXIT_UNKNOWN "ABORTADO: nao foi possivel verificar o contrato do operario. $($indeterminado[0])"
         }
 
-        $patchArgs = New-FilteredPatchArgument -BaseCommit $baseCommit -OraclePaths $oraclePaths
+        if ($violation.Count -gt 0 -or $outside.Count -gt 0) {
+            Set-Content -LiteralPath (Join-Path $iterDir 'VIOLACAO-DE-CONTRATO.txt') -Encoding utf8 -Value (
+                @('O operario violou o contrato da missao.', '') +
+                $(if ($violation.Count) { @('Alterou o ORACULO:') + $violation + '' }) +
+                $(if ($outside.Count)   { @('Escreveu FORA do WRITE_SET:') + $outside + '' }) +
+                @('Nenhuma dessas alteracoes foi medida. A iteracao reprova.'))
+            $resumo = @()
+            if ($violation.Count) { $resumo += "oraculo: $($violation -join ', ')" }
+            if ($outside.Count)   { $resumo += "fora do write-set: $($outside -join ', ')" }
+            $script:state.consumed = $iteration
+            Stop-Loop $EXIT_RED "REPROVADO na iteracao ${iteration}: violacao de contrato ($($resumo -join ' | '))." 'RED'
+        }
+
+        $patchArgs = New-FilteredPatchArgument -BaseCommit $baseCommit -WriteSetPaths $writeSet -OraclePaths $oraclePaths
         $patch = Assert-Git -Dir $workTree -Arguments $patchArgs -What 'gerar o patch filtrado'
         $patchFile = Join-Path $iterDir 'operator.patch'
         Set-Content -LiteralPath $patchFile -Value $patch.Output -Encoding utf8 -NoNewline
@@ -306,6 +359,7 @@ finally {
         max_iterations = $MaxIterations
         base_commit    = if (Get-Variable baseCommit -Scope 0 -EA SilentlyContinue) { $baseCommit } else { $null }
         oracle_paths   = $oraclePaths
+        write_set      = $writeSet
         dry_run        = [bool]$DryRun
         human_decision = $admission.HumanDecision
         kept_worktrees = [bool]$KeepWorktree
@@ -317,7 +371,7 @@ finally {
         limits         = @(
             'O veredito vale para os gates declarados nesta missao e para o ambiente desta maquina.'
             'GREEN local nao promove automaticamente para producao.'
-            'Os caminhos do oraculo foram excluidos do patch; alteracoes do operario neles nao foram medidas.'
+            'Apenas os caminhos do WRITE_SET foram medidos; qualquer alteracao fora dele reprova a iteracao.'
         )
     } | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $verdictFile -Encoding utf8
     Write-Log "Veredito gravado em $verdictFile"

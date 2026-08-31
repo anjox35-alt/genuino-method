@@ -20,6 +20,7 @@ FRONTEIRA: pwsh 7 nesta máquina, o mesmo interpretador onde os gates rodam
 GATE_DA_FRONTEIRA: $out = & pwsh -NoProfile -File './engine/samples/Get-GenuinoGreeting.ps1'; if ($out -ne 'GENUINO_OK') { exit 1 }; exit 0
 PRE_REQUISITOS_HUMANOS: NENHUM
 ORACULO: NENHUM
+WRITE_SET: engine/samples/
 
 STOP CONDITIONS:
 - Qualquer arquivo fora do write-set: reprovação imediata.

@@ -64,6 +64,7 @@ Describe 'Test-MissionAdmission' {
             GATE_DA_FRONTEIRA      = 'pwsh -c "exit 0"'
             PRE_REQUISITOS_HUMANOS = 'NENHUM'
             ORACULO                = 'NENHUM'
+            WRITE_SET              = 'src/'
         }
     }
 
@@ -79,7 +80,7 @@ Describe 'Test-MissionAdmission' {
         # producao torna o teste tautologico: remover TEST_CMD do modulo removeria
         # tambem o caso que deveria detectar essa remocao, e a suite continuaria
         # verde enquanto o gate deixava de exigir o campo.
-        foreach ($field in @('TEST_CMD', 'FRONTEIRA', 'GATE_DA_FRONTEIRA', 'PRE_REQUISITOS_HUMANOS', 'ORACULO')) {
+        foreach ($field in @('TEST_CMD', 'FRONTEIRA', 'GATE_DA_FRONTEIRA', 'PRE_REQUISITOS_HUMANOS', 'ORACULO', 'WRITE_SET')) {
             $mission = $script:Completa.Clone()
             $mission.Remove($field)
             $r = Test-MissionAdmission -Mission $mission
@@ -93,7 +94,7 @@ Describe 'Test-MissionAdmission' {
         # Guarda separada: se alguem remover um campo da producao, este teste
         # falha e nomeia o campo perdido, em vez de a suite ficar verde por
         # deixar de testar aquilo.
-        $esperados = @('TEST_CMD', 'FRONTEIRA', 'GATE_DA_FRONTEIRA', 'PRE_REQUISITOS_HUMANOS', 'ORACULO')
+        $esperados = @('TEST_CMD', 'FRONTEIRA', 'GATE_DA_FRONTEIRA', 'PRE_REQUISITOS_HUMANOS', 'ORACULO', 'WRITE_SET')
         $atuais = @(Get-RequiredMissionField)
         foreach ($campo in $esperados) {
             $atuais | Should -Contain $campo -Because "o gate precisa continuar exigindo $campo"
@@ -306,17 +307,17 @@ Describe 'ConvertTo-OraclePath' {
 Describe 'New-FilteredPatchArgument' {
 
     It 'exclui cada caminho do oraculo do diff' {
-        $a = New-FilteredPatchArgument -BaseCommit 'abc' -OraclePaths @('tests/', 'spec/')
+        $a = New-FilteredPatchArgument -BaseCommit 'abc' -WriteSetPaths @('src/') -OraclePaths @('tests/', 'spec/')
         ($a -join ' ') | Should -BeLike '*:(exclude)tests/*'
         ($a -join ' ') | Should -BeLike '*:(exclude)spec/*'
     }
 
     It 'usa --binary, para que alteracao binaria nao vire apenas um aviso' {
-        (New-FilteredPatchArgument -BaseCommit 'abc' -OraclePaths @()) | Should -Contain '--binary'
+        (New-FilteredPatchArgument -BaseCommit 'abc' -WriteSetPaths @('src/') -OraclePaths @()) | Should -Contain '--binary'
     }
 
     It 'sem oraculo, nao emite nenhuma exclusao' {
-        $a = New-FilteredPatchArgument -BaseCommit 'abc' -OraclePaths @()
+        $a = New-FilteredPatchArgument -BaseCommit 'abc' -WriteSetPaths @('src/') -OraclePaths @()
         ($a -join ' ') | Should -Not -BeLike '*exclude*'
     }
 }

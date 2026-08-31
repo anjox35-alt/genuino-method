@@ -97,6 +97,7 @@ Describe 'Orquestrador -- gate de admissao' {
             'GATE_DA_FRONTEIRA: NENHUM'
             'PRE_REQUISITOS_HUMANOS: instalar o SDK do Android'
             'ORACULO: NENHUM'
+            'WRITE_SET: src/'
         )
         $r = Invoke-Loop -Root $repo -Mission $m
         $r.ExitCode | Should -Be 1
@@ -116,6 +117,7 @@ Describe 'Orquestrador -- baseline RED' {
             'GATE_DA_FRONTEIRA: NENHUM'
             'PRE_REQUISITOS_HUMANOS: NENHUM'
             'ORACULO: NENHUM'
+            'WRITE_SET: src/'
         )
         $r = Invoke-Loop -Root $repo -Mission $m
         $r.ExitCode | Should -Be 2
@@ -130,6 +132,7 @@ Describe 'Orquestrador -- baseline RED' {
             'GATE_DA_FRONTEIRA: NENHUM'
             'PRE_REQUISITOS_HUMANOS: NENHUM'
             'ORACULO: NENHUM'
+            'WRITE_SET: src/'
         )
         $r = Invoke-Loop -Root $repo -Mission $m
         $r.Output   | Should -Match 'baseline: exit=1'
@@ -147,6 +150,7 @@ Describe 'Orquestrador -- baseline RED' {
             'GATE_DA_FRONTEIRA: NENHUM'
             'PRE_REQUISITOS_HUMANOS: NENHUM'
             'ORACULO: NENHUM'
+            'WRITE_SET: src/'
         )
         (Invoke-Loop -Root $repo -Mission $m).ExitCode | Should -Not -Be 0
     }
@@ -162,6 +166,7 @@ Describe 'Orquestrador -- evidencia e limpeza' {
             'GATE_DA_FRONTEIRA: NENHUM'
             'PRE_REQUISITOS_HUMANOS: NENHUM'
             'ORACULO: tests/, spec/'
+            'WRITE_SET: src/'
         )
         Invoke-Loop -Root $repo -Mission $m | Out-Null
 
@@ -185,6 +190,7 @@ Describe 'Orquestrador -- evidencia e limpeza' {
             'GATE_DA_FRONTEIRA: NENHUM'
             'PRE_REQUISITOS_HUMANOS: NENHUM'
             'ORACULO: NENHUM'
+            'WRITE_SET: src/'
         )
         Invoke-Loop -Root $repo -Mission $m | Out-Null
         $metas = @(Get-ChildItem (Join-Path $repo 'runs/meta') -Recurse -Filter 'baseline-g5.log.meta.json')
@@ -201,6 +207,7 @@ Describe 'Orquestrador -- evidencia e limpeza' {
             'GATE_DA_FRONTEIRA: NENHUM'
             'PRE_REQUISITOS_HUMANOS: NENHUM'
             'ORACULO: NENHUM'
+            'WRITE_SET: src/'
         )
         Invoke-Loop -Root $repo -Mission $m | Out-Null
         $lista = (& git -C $repo worktree list | Out-String) -split "`r?`n" | Where-Object { $_.Trim() }
@@ -216,6 +223,7 @@ Describe 'Orquestrador -- evidencia e limpeza' {
             'GATE_DA_FRONTEIRA: NENHUM'
             'PRE_REQUISITOS_HUMANOS: NENHUM'
             'ORACULO: NENHUM'
+            'WRITE_SET: src/'
         )
         Invoke-Loop -Root $repo -Mission $m | Out-Null
         $primeiro = @(Get-ChildItem (Join-Path $repo 'runs/colisao') -Directory)[0]
@@ -223,5 +231,121 @@ Describe 'Orquestrador -- evidencia e limpeza' {
         # Duas execucoes produzem dois diretorios distintos, nunca um sobrescrito.
         @(Get-ChildItem (Join-Path $repo 'runs/colisao') -Directory).Count | Should -BeGreaterThan 1
         Test-Path -LiteralPath (Join-Path $primeiro.FullName 'verdict.json') | Should -BeTrue
+    }
+}
+
+Describe 'Orquestrador -- contrato do operario' {
+
+    It 'aborta quando o ORACULO nao casa nenhum arquivo rastreado' {
+        # `git diff -- <pathspec que nao casa nada>` devolve exit 0 e saida vazia.
+        # Sem esta validacao, um typo faria o motor logar "oraculo protegido",
+        # nao detectar violacao, e gravar oracle_paths no veredito -- evidencia
+        # afirmativamente falsa, pior que protecao ausente.
+        $repo = New-Sandbox
+        $m = New-TestMission -Root $repo -Name 'typo' -Lines @(
+            'TEST_CMD: exit 1'
+            'FRONTEIRA: local'
+            'GATE_DA_FRONTEIRA: NENHUM'
+            'PRE_REQUISITOS_HUMANOS: NENHUM'
+            'ORACULO: caminho/que/nao/existe/'
+            'WRITE_SET: src/'
+        )
+        $r = Invoke-Loop -Root $repo -Mission $m
+        $r.ExitCode | Should -Be 2
+        $r.Output   | Should -Match 'nao casa nenhum arquivo rastreado'
+    }
+
+    It 'aceita ORACULO que casa arquivo real' {
+        $repo = New-Sandbox
+        # LEIAME.txt existe no commit-base criado por New-TestRepo.
+        $m = New-TestMission -Root $repo -Name 'oraculo-ok' -Lines @(
+            'TEST_CMD: exit 1'
+            'FRONTEIRA: local'
+            'GATE_DA_FRONTEIRA: NENHUM'
+            'PRE_REQUISITOS_HUMANOS: NENHUM'
+            'ORACULO: LEIAME.txt'
+            'WRITE_SET: src/'
+        )
+        $r = Invoke-Loop -Root $repo -Mission $m
+        $r.Output   | Should -Match 'Oraculo validado'
+        $r.ExitCode | Should -Be 2   # DryRun sempre para antes de GREEN
+    }
+
+    It 'recusa WRITE_SET NENHUM' {
+        # Sem allowlist, qualquer arquivo que o operario criar entra na medicao --
+        # que e exatamente o furo do conftest.py.
+        $repo = New-Sandbox
+        $m = New-TestMission -Root $repo -Name 'sem-ws' -Lines @(
+            'TEST_CMD: exit 1'
+            'FRONTEIRA: local'
+            'GATE_DA_FRONTEIRA: NENHUM'
+            'PRE_REQUISITOS_HUMANOS: NENHUM'
+            'ORACULO: NENHUM'
+            'WRITE_SET: NENHUM'
+        )
+        $r = Invoke-Loop -Root $repo -Mission $m
+        $r.ExitCode | Should -Be 1
+        $r.Output   | Should -Match 'WRITE_SET nao pode ser NENHUM'
+    }
+
+    It 'reprova a admissao quando falta WRITE_SET' {
+        $repo = New-Sandbox
+        $m = New-TestMission -Root $repo -Name 'falta-ws' -Lines @(
+            'TEST_CMD: exit 1'
+            'FRONTEIRA: local'
+            'GATE_DA_FRONTEIRA: NENHUM'
+            'PRE_REQUISITOS_HUMANOS: NENHUM'
+            'ORACULO: NENHUM'
+        )
+        $r = Invoke-Loop -Root $repo -Mission $m
+        $r.ExitCode | Should -Be 1
+        $r.Output   | Should -Match 'WRITE_SET'
+    }
+}
+
+Describe 'Allowlist de write-set contra repositorio real' {
+
+    BeforeAll {
+        # Reproduz o cenario exato da auditoria: o operario nao toca o oraculo,
+        # cria um arquivo AO LADO que o TEST_CMD leria.
+        $script:R = New-Sandbox
+        New-Item -ItemType Directory -Path (Join-Path $script:R 'src') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $script:R 'tests') -Force | Out-Null
+        'base'          | Set-Content -LiteralPath (Join-Path $script:R 'src/app.txt')
+        'assert real'   | Set-Content -LiteralPath (Join-Path $script:R 'tests/oracle.txt')
+        & git -C $script:R add -A
+        & git -C $script:R commit -qm 'com oraculo'
+        $script:Base = (& git -C $script:R rev-parse HEAD).Trim()
+
+        # o operario: trabalha no write-set, adultera o oraculo, e planta o conftest
+        'impl'            | Set-Content -LiteralPath (Join-Path $script:R 'src/app.txt')
+        'assert SEMPRE OK'| Set-Content -LiteralPath (Join-Path $script:R 'tests/oracle.txt')
+        'skip tudo'       | Set-Content -LiteralPath (Join-Path $script:R 'tests/conftest.txt')
+        & git -C $script:R add -A
+    }
+
+    It 'detecta o conftest plantado FORA do write-set' {
+        $fora = @(Get-PathOutsideWriteSet -WorktreePath $script:R -BaseCommit $script:Base -WriteSetPaths @('src/'))
+        $fora | Should -Contain 'tests/conftest.txt'
+        $fora | Should -Contain 'tests/oracle.txt'
+    }
+
+    It 'detecta a adulteracao do oraculo' {
+        $v = @(Get-OracleViolation -WorktreePath $script:R -BaseCommit $script:Base -OraclePaths @('tests/oracle.txt'))
+        $v | Should -Contain 'tests/oracle.txt'
+    }
+
+    It 'o patch carrega SO o write-set -- nem oraculo, nem conftest' {
+        $a = New-FilteredPatchArgument -BaseCommit $script:Base -WriteSetPaths @('src/') -OraclePaths @('tests/oracle.txt')
+        $patch = (& git -C $script:R @a) | Out-String
+        $patch | Should -Match 'src/app.txt'
+        # Estes dois sao o achado da auditoria: sob blocklist, o conftest viajava.
+        $patch | Should -Not -Match 'conftest'
+        $patch | Should -Not -Match 'oracle.txt'
+    }
+
+    It 'Test-PathspecMatchesTrackedFile separa caminho real de typo' {
+        Test-PathspecMatchesTrackedFile -RepoPath $script:R -Commit $script:Base -Pathspec 'tests/' | Should -BeTrue
+        Test-PathspecMatchesTrackedFile -RepoPath $script:R -Commit $script:Base -Pathspec 'test/'  | Should -BeFalse
     }
 }
