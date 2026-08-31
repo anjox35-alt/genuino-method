@@ -93,15 +93,38 @@ def test_recusa_quando_sobra_caminho_absoluto_desconhecido(tmp_path: Path) -> No
     )
 
 
-def test_recusa_caminho_unix_de_home(tmp_path: Path) -> None:
-    """A matriz da CI roda ubuntu. A regra vale nos dois sistemas."""
+def test_recusa_home_alheio_ainda_que_pareca_o_da_maquina(tmp_path: Path) -> None:
+    r"""A regra vale nos dois sistemas -- e o teste precisa medir a regra.
+
+    A versao anterior deixava `tmp_dir` e `home_dir` no padrao e passava
+    `repo_root=Path("/srv/genuino-method")`. Isso media a maquina de quem roda,
+    nao o codigo, e errava de um jeito diferente em cada sistema:
+
+    - No Windows, `Path("/srv/...")` vira `\srv\...`, que nao e caminho
+      absoluto para o sanitizador. A recusa acontecia no proprio `repo_root`,
+      antes de o `notes` ser examinado: o teste passava pelo motivo errado.
+    - No Ubuntu da CI, `Path.home()` E `/home/runner`. O sanitizador fazia
+      exatamente o que deve -- trocar o home real por `<HOME>` -- e portanto nao
+      recusava. `DID NOT RAISE`, e a CI ficou vermelha por um acerto do produto.
+
+    Injetar os tres diretorios torna `/home/runner/...` genuinamente
+    desconhecido nas duas plataformas, que e a condicao que a recusa mede. O
+    home REAL continuar virando marcador e outro comportamento, coberto por
+    `test_temporario_e_home_viram_marcadores`.
+    """
     dados = dict(VEREDITO_MINIMO)
     dados["notes"] = ["worktree em /home/runner/work/tmp/genuino-x"]
-    with pytest.raises(_publish().PublicacaoRecusada):
+    with pytest.raises(_publish().PublicacaoRecusada) as erro:
         _publish().build_public_verdict(
             _grava(tmp_path, dados),
-            repo_root=Path("/srv/genuino-method"),
+            repo_root=tmp_path / "repo",
+            tmp_dir=tmp_path / "tmp",
+            home_dir=tmp_path / "home",
         )
+    assert "/home/runner" in str(erro.value), (
+        "a recusa precisa dizer QUAL caminho a motivou; "
+        "uma recusa sem o trecho ofensor nao e acionavel"
+    )
 
 
 @pytest.mark.parametrize(
@@ -132,13 +155,28 @@ def test_recusa_qualquer_absoluto_nao_reconhecido(tmp_path: Path, absoluto: str)
     """
     dados = dict(VEREDITO_MINIMO)
     dados["notes"] = [f"algo aconteceu em {absoluto}"]
-    with pytest.raises(_publish().PublicacaoRecusada):
+    with pytest.raises(_publish().PublicacaoRecusada) as erro:
         _publish().build_public_verdict(
             _grava(tmp_path, dados),
             repo_root=tmp_path / "repo",
             tmp_dir=tmp_path / "tmp",
             home_dir=tmp_path / "home",
         )
+
+    # Sem este assert, uma recusa generica -- "algo sobrou" -- passa nos sete
+    # casos sem dizer o que a motivou. O contra-auditor apontou a lacuna: o
+    # teste media que a funcao PARA, nao que a parada e acionavel.
+    #
+    # O trecho esperado e derivado do proprio caso, e nao duplicado numa
+    # segunda lista que sairia de sincronia com a primeira: o sanitizador
+    # nomeia o que casou -- o prefixo, para unidade e UNC; o caminho inteiro,
+    # para raiz unix.
+    barra = chr(92)
+    ofensor = absoluto if absoluto.startswith("/") else absoluto.lstrip(barra).split(barra)[0]
+    assert ofensor in str(erro.value), (
+        f"a recusa deveria nomear o trecho ofensor {ofensor!r}; "
+        "recusa que nao diz o que a motivou nao e acionavel"
+    )
 
 
 def test_temporario_e_home_viram_marcadores(tmp_path: Path) -> None:
@@ -250,3 +288,54 @@ def test_o_modulo_nao_alcanca_a_rede() -> None:
         assert proibido not in fonte, (
             f"'{proibido}' aparece em publish.py; este modulo transforma e valida, nao publica"
         )
+
+
+def test_recusa_absoluto_fora_do_campo_notes(tmp_path: Path) -> None:
+    """A sanitizacao vale para o documento inteiro, nao para um campo escolhido.
+
+    O contra-auditor observou que TODOS os casos anteriores injetavam o caminho
+    absoluto em `notes`. Uma implementacao que sanitizasse apenas essa chave --
+    e ignorasse o resto do veredito -- passaria na suite inteira.
+
+    Aqui o caminho entra em `write_set`, que e outra chave de topo. Se a recusa
+    depender do nome do campo, este teste reprova.
+    """
+    dados = dict(VEREDITO_MINIMO)
+    dados["write_set"] = ["/opt/fora-do-repo/src/"]
+    with pytest.raises(_publish().PublicacaoRecusada) as erro:
+        _publish().build_public_verdict(
+            _grava(tmp_path, dados),
+            repo_root=tmp_path / "repo",
+            tmp_dir=tmp_path / "tmp",
+            home_dir=tmp_path / "home",
+        )
+    assert "/opt/fora-do-repo" in str(erro.value)
+
+
+def test_hash_e_do_original_ainda_que_a_sanitizacao_mude_bytes(tmp_path: Path) -> None:
+    """O elo com o arquivo em disco, medido onde ele pode quebrar.
+
+    `test_preserva_o_hash_do_arquivo_original` roda sobre um veredito ja limpo,
+    onde a sanitizacao nao altera um byte. Nesse caso o hash de ANTES e o hash de
+    DEPOIS sao identicos, e uma implementacao que hasheasse o resultado
+    sanitizado passaria sem ser detectada -- foi o achado do contra-auditor.
+
+    Aqui o conteudo MUDA na sanitizacao: o caminho do repositorio vira `<REPO>`.
+    Os dois hashes passam a divergir, e so o do arquivo original satisfaz o
+    assert. Este e o teste que mata aquele mutante.
+    """
+    repo = tmp_path / "repo"
+    dados = dict(VEREDITO_MINIMO)
+    dados["notes"] = [f"patch aplicado em {repo / 'mcp'}"]
+    caminho = _grava(tmp_path, dados)
+    esperado = hashlib.sha256(caminho.read_bytes()).hexdigest()
+
+    registro = _publish().build_public_verdict(
+        caminho, repo_root=repo, tmp_dir=tmp_path / "tmp", home_dir=tmp_path / "home"
+    )
+
+    assert "<REPO>" in json.dumps(registro), (
+        "pre-condicao do teste: a sanitizacao precisa ter alterado o conteudo, "
+        "senao os dois hashes coincidem e o mutante sobrevive"
+    )
+    assert registro["verdict_sha256"] == esperado
