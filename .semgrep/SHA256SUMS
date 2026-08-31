@@ -1,0 +1,2 @@
+d87e8a69a68b1df2531cf9accd1dfaee6f0e42e7b06b8eba854b0184ddc3c3c0  .semgrep/rules/security-audit.yaml
+139b35ad3442bc83d1f0864db82fa4fdc7e1f1ee4b5ac872bfbeb604c82c6518  .semgrep/rules/secrets.yaml

@@ -190,6 +190,24 @@ O que fecharia: versionar um `verdict.json` sanitizado por missão, com os
 hashes, os exit codes e os caminhos reduzidos a marcadores, deixando fora
 apenas o patch e o transitório. Não está feito.
 
+## 14. O terceiro modelo, hoje, nao e invocavel pelo motor
+
+O arranjo de tres papeis em `docs/papeis.md` supoe um auditor independente do
+gerente e do operario. Em 2026-08-31 esse auditor deixou de existir na pratica:
+
+- O `gemini-cli` (0.57.0) devolve `IneligibleTierError: UNSUPPORTED_CLIENT`. O
+  Google encerrou o *Gemini Code Assist for individuals* para esse cliente.
+- O Antigravity, para onde a mensagem de erro direciona, e aplicacao Electron.
+  Nao tem CLI headless, entao o motor nao consegue chama-lo.
+
+Consequencia: a etapa de auditoria por terceiro modelo virou **manual**. Um
+humano abre o aplicativo, cola o material e le a resposta. Isso funciona, e nao
+escala, e nao entra no `verdict.json` como as demais medicoes.
+
+Enquanto durar, `docs/papeis.md` descreve um arranjo que o motor nao executa
+sozinho. A separacao autor/juiz continua real para o operario e continua
+inexistente para o gerente.
+
 ---
 
 ## Corrigidos, com a evidência

@@ -18,7 +18,31 @@ SEMGREP: 1.174.0
 
 425 regras no total, 336 ids únicos (packs se sobrepõem; semgrep deduplica).
 
-SHA256 no ato da vendorização: ver SHA256SUMS neste diretório.
+SHA256 no ato da vendorização: ver `SHA256SUMS` neste diretório.
+
+Os dois hashes conferidos em 2026-08-31 contra os arquivos trazidos:
+
+```
+d87e8a69a68b1df2531cf9accd1dfaee6f0e42e7b06b8eba854b0184ddc3c3c0  security-audit.yaml
+139b35ad3442bc83d1f0864db82fa4fdc7e1f1ee4b5ac872bfbeb604c82c6518  secrets.yaml
+```
+
+São idênticos aos registrados na vendorização original, o que prova que a cópia
+entre repositórios foi byte a byte. O `SHA256SUMS` deste diretório lista apenas
+os dois arquivos efetivamente trazidos — o do repositório de origem inclui
+`javascript.yaml` e `typescript.yaml`, que ficaram de fora.
+
+## Licença das regras
+
+As regras trazidas declaram, em seus próprios metadados, **Semgrep Rules
+License v1.0** (`semgrep.dev/legal/rules-license`). Não são Apache-2.0.
+
+Este repositório é Apache-2.0; `.semgrep/rules/` não é. São artefatos de
+terceiros redistribuídos sob a licença do autor original, e a licença viaja
+com os arquivos: cada regra carrega o campo `license` no próprio YAML.
+
+Quem for reutilizar `.semgrep/rules/` fora deste repositório responde à licença
+do Semgrep, não à deste projeto.
 
 ## Atualizar
 
