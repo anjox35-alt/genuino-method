@@ -82,6 +82,16 @@ jobs:
         working-directory: mcp
         run: uv sync --locked
 
+      # Versao fixada, nao a mais recente. O gate de seguranca precisa produzir
+      # o mesmo veredito hoje e daqui a seis meses: um semgrep que muda sozinho
+      # faz a mesma arvore passar e reprovar sem que uma linha mude -- a mesma
+      # razao pela qual as regras sao vendorizadas em vez de baixadas.
+      - name: Install semgrep
+        run: pipx install semgrep==1.174.0
+
+      # O gate sai com 2 quando nao consegue medir, e 2 reprova este job de
+      # proposito. Sem semgrep instalado, `selftest_security` devolve
+      # INDETERMINADO -- que nao e PASS, e nao pode virar CI verde.
       - name: Scan the whole tree
         working-directory: mcp
         run: uv run python -m genuino_mcp.check_tree ..
