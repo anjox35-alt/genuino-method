@@ -191,6 +191,18 @@ if (Test-Path -LiteralPath $runDir) {
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
 Write-Log "Evidencia: $runDir"
 
+# Sentinela de missao em curso, lido pelo hook `.claude/hooks/proteger-oraculo.sh`.
+#
+# O motor ja impede o OPERARIO de tocar o oraculo: o patch e filtrado. Nao
+# impedia o GERENTE, que edita com as proprias ferramentas e nao passa por
+# filtro nenhum. Mudar o teste de aceitacao no meio da missao mede o operario
+# por uma regua diferente da que ele recebeu.
+#
+# O arquivo e removido no `finally`, entao vale exatamente enquanto a missao
+# roda -- inclusive quando ela aborta.
+$missionLock = Join-Path $RepoRoot 'runs/.missao-ativa'
+Set-Content -LiteralPath $missionLock -Value $missionId -Encoding utf8 -NoNewline
+
 $workTree = Join-Path ([IO.Path]::GetTempPath()) "genuino-work-$missionId-$runId"
 $measTree = Join-Path ([IO.Path]::GetTempPath()) "genuino-meas-$missionId-$runId"
 
@@ -360,6 +372,12 @@ catch {
     Write-Log "ABORTADO por excecao: $($_.Exception.Message)"
 }
 finally {
+    # A missao terminou -- de qualquer forma, inclusive por excecao. O oraculo
+    # volta a ser editavel pelo gerente.
+    if (Get-Variable missionLock -Scope 0 -EA SilentlyContinue) {
+        Remove-Item -LiteralPath $missionLock -Force -EA SilentlyContinue
+    }
+
     $verdictFile = Join-Path $runDir 'verdict.json'
     ([ordered]@{
         mission        = $missionId

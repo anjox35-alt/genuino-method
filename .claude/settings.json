@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/proteger-oraculo.sh\"",
+            "timeout": 20,
+            "statusMessage": "Verificando se o oraculo esta sob missao..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/formatar-python.sh\"",
+            "timeout": 120,
+            "statusMessage": "Formatando com ruff..."
+          }
+        ]
+      }
+    ]
+  }
+}

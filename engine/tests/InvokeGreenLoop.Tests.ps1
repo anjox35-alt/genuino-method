@@ -464,3 +464,32 @@ Describe 'Get-PathOutsideWriteSet -- comparacao sensivel a caixa' {
         $Sonda | Should -BeOfType [bool]
     }
 }
+
+Describe 'Sentinela de missao em curso' {
+
+    It 'nao sobra sentinela depois que o loop termina' {
+        # O sentinela `runs/.missao-ativa` diz ao hook do gerente que o oraculo
+        # esta sob contrato. Se ele sobreviver ao fim da missao, o oraculo fica
+        # permanentemente bloqueado e o proximo RED nao pode ser escrito -- o
+        # guarda passa a impedir o trabalho que deveria proteger.
+        $repo = New-TestRepo (Join-Path ([IO.Path]::GetTempPath()) "genuino-lock-$([guid]::NewGuid().ToString('N'))")
+        try {
+            $m = New-TestMission -Root $repo -Name 'lock' -Lines @(
+                '# lock',
+                'WRITE_SET: src/',
+                'ORACULO: NENHUM',
+                'TEST_CMD: exit 1',
+                'FRONTEIRA: nenhuma',
+                'GATE_DA_FRONTEIRA: exit 0',
+                'PRE_REQUISITOS_HUMANOS: NENHUM'
+            )
+            $r = Invoke-Loop -Root $repo -Mission $m
+            $r.ExitCode | Should -BeGreaterThan -1
+            (Test-Path -LiteralPath (Join-Path $repo 'runs/.missao-ativa')) | Should -BeFalse
+        }
+        finally {
+            & git -C $repo worktree prune 2>$null
+            Remove-Item -LiteralPath $repo -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
