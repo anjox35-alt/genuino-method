@@ -18,16 +18,29 @@ sentinela="$raiz/runs/.missao-ativa"
 # Sem missao em curso, nada a proteger.
 [ -f "$sentinela" ] || exit 0
 
-alvo=$(python -c "
-import json,sys
+# Duas saidas diferentes, de proposito. Exit != 0 significa que o evento nao
+# pode ser lido -- nao medi. Exit 0 com saida vazia significa que o evento foi
+# lido e simplesmente nao carrega caminho, como num Bash -- medi, e nao ha
+# alvo. Colapsar as duas fazia "nao consegui" virar "pode escrever".
+alvo=$(python -c '
+import json, sys
 try:
     d = json.load(sys.stdin)
 except Exception:
-    print('')
-    sys.exit(0)
-ti = d.get('tool_input') or {}
-print(ti.get('file_path') or ti.get('path') or '')
-" 2>/dev/null)
+    sys.exit(3)
+ti = d.get("tool_input") or {}
+print(ti.get("file_path") or ti.get("path") or "")
+' 2>/dev/null)
+codigo=$?
+
+if [ "$codigo" -ne 0 ]; then
+    # Ha missao ativa e o hook nao conseguiu nem descobrir o alvo. Interpretador
+    # ausente cai aqui tambem, com 127. Nao medir nao e aprovar.
+    cat <<'JSON'
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Oraculo protegido: ha missao em curso e o hook nao conseguiu ler o evento para descobrir o alvo da escrita. Nao medir nao e aprovar. Se a escrita for legitima, encerre a missao removendo runs/.missao-ativa."}}
+JSON
+    exit 0
+fi
 
 [ -n "$alvo" ] || exit 0
 

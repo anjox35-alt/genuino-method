@@ -138,6 +138,17 @@ case "$saida" in
                 falhas=$((falhas + 1)) ;;
 esac
 
+echo "== evento ilegivel com missao ativa nao pode abrir =="
+total=$((total + 1))
+printf '%s' "missao-com-evento-quebrado" > "$sentinela"
+saida=$(printf '%s' 'isto nao e json' | sh "$hook" 2>/dev/null)
+rm -f "$sentinela"
+case "$saida" in
+    *'"deny"'*) echo "  ok    deny   evento ilegivel nega" ;;
+    *)          echo "  FALHA obtido=allow  nao medir virou aprovar" >&2
+                falhas=$((falhas + 1)) ;;
+esac
+
 echo
 if [ "$falhas" -eq 0 ]; then
     echo "ORACULO VERDE: $total/$total casos."
