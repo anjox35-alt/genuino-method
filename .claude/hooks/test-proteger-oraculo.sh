@@ -64,6 +64,26 @@ verificar() {
     fi
 }
 
+# Igual a verificar(), mas varia o id da missao em vez do caminho. O alvo e
+# sempre o oraculo canonico, entao a resposta correta e sempre deny.
+verificar_id() {
+    rotulo="$1"
+    id="$2"
+    total=$((total + 1))
+    printf '%s' "$id" > "$sentinela"
+    saida=$(decidir "$raiz/mcp/tests/test_x.py")
+    case "$saida" in
+        *'"deny"'*) obtido="deny" ;;
+        *)          obtido="allow" ;;
+    esac
+    if [ "$obtido" = "deny" ]; then
+        printf '  ok    deny   id=%s\n' "$rotulo"
+    else
+        printf '  FALHA obtido=%s  id=%s\n' "$obtido" "$rotulo" >&2
+        falhas=$((falhas + 1))
+    fi
+}
+
 echo "missao-de-teste-do-oraculo" > "$sentinela"
 
 echo "== sob missao ativa: deve BLOQUEAR o oraculo =="
@@ -82,6 +102,41 @@ rm -f "$sentinela"
 echo "== sem missao: deve PERMITIR, e o passo 1 do fluxo R7 =="
 verificar "$raiz/mcp/tests/test_x.py"   allow "escrever o oraculo ANTES de delegar"
 verificar "$raiz/MCP/TESTS/test_x.py"   allow "idem, em caixa alta"
+
+echo "== id de missao nao pode derrubar o deny =="
+verificar_id "aspa simples"    "missao com 'aspa'"
+verificar_id "aspa dupla"      'missao com "aspa"'
+verificar_id "duas linhas"     "linha1
+linha2"
+verificar_id "backslash final" 'missao-com-barra\'
+verificar_id "chave solta"     'missao-}-{-solta'
+verificar_id "vazio"           ""
+rm -f "$sentinela"
+
+echo "== deny sobrevive a python quebrado na montagem =="
+total=$((total + 1))
+real=$(command -v python) || exit 2
+sabotado=$(mktemp -d)
+# Falha SO na chamada que monta o deny, que passa o id como TERCEIRO
+# argumento; a extracao do alvo usa dois e segue no python de verdade.
+# Um stub que falhasse em tudo mataria a extracao la em cima, o bloco
+# `case` nunca rodaria, e o teste estaria medindo a Task 2, nao esta.
+cat > "$sabotado/python" <<STUB
+#!/bin/sh
+if [ "\$#" -ge 3 ]; then exit 1; fi
+exec "$real" "\$@"
+STUB
+chmod +x "$sabotado/python"
+printf '%s' "missao-com-python-quebrado" > "$sentinela"
+evento=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$raiz/mcp/tests/test_x.py")
+saida=$(printf '%s' "$evento" | PATH="$sabotado:$PATH" sh "$hook" 2>/dev/null)
+rm -rf "$sabotado"
+rm -f "$sentinela"
+case "$saida" in
+    *'"deny"'*) echo "  ok    deny   fallback literal emitido" ;;
+    *)          echo "  FALHA obtido=allow  o hook abriu com python quebrado" >&2
+                falhas=$((falhas + 1)) ;;
+esac
 
 echo
 if [ "$falhas" -eq 0 ]; then
