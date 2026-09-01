@@ -31,3 +31,14 @@ identity.key
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Scratch do subagent-driven-development: ledger, briefs, relatorios e
+# pacotes de diff de um plano em execucao. Derivado, regeneravel, e nao
+# pertence a um repositorio publico.
+.superpowers/
+
+# Configuracao local de agentes desta maquina: skills em `.agents/`, config
+# e hooks do Codex CLI em `.codex/`. Sao ajuste de host, nao o metodo. Sem
+# esta linha, um `git add -A` publica os dois num repositorio publico.
+.agents/
+.codex/

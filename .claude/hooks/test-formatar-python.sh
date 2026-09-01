@@ -90,6 +90,49 @@ verificar "$raiz/engine/x.ps1"             ignora  "powershell"
 verificar "$raiz/mcp/src/a.pyc"            ignora  "nao e .py"
 verificar "$raiz/nucleo/fora.py"           ignora  "python fora de mcp/"
 
+echo "== so python3 no PATH: continua formatando =="
+total=$((total + 1))
+# Em Linux e macOS de fabrica o binario chama-se `python3` e `python` nao
+# existe. Sem resolver entre os dois, o extrator nao roda nesses hosts, `$alvo`
+# sai vazio e o hook devolve exit 0 sem formatar nada. O silencio e o problema:
+# o defeito reaparece minutos depois, no `ruff format --check` da CI, que e
+# justamente o atraso de diagnostico que este hook existe para encurtar.
+#
+# Wrappers so para git, tr e python3, mais o $palco por causa do uv falso:
+# `python` fica genuinamente ausente do PATH.
+#
+# O evento vai por printf, e nao pelo json.dumps do decidir(), porque este
+# caso precisa mandar o hook por um PATH restrito. O caminho e so barra
+# normal, entao nao ha backslash a escapar.
+sh_bin=$(command -v sh) || exit 2
+real_git=$(command -v git) || exit 2
+real_tr=$(command -v tr) || exit 2
+real_py=$(command -v python) || exit 2
+so_py3=$(mktemp -d) || exit 2
+cat > "$so_py3/git" <<STUBGIT3
+#!/bin/sh
+exec "$real_git" "\$@"
+STUBGIT3
+cat > "$so_py3/tr" <<STUBTR3
+#!/bin/sh
+exec "$real_tr" "\$@"
+STUBTR3
+cat > "$so_py3/python3" <<STUBPY3
+#!/bin/sh
+exec "$real_py" "\$@"
+STUBPY3
+chmod +x "$so_py3/git" "$so_py3/tr" "$so_py3/python3"
+evento=$(printf '{"hook_event_name":"PostToolUse","tool_name":"Write","tool_response":{"filePath":"%s"}}' "$raiz/mcp/src/a.py")
+: > "$STUB_LOG"
+printf '%s' "$evento" | PATH="$so_py3:$palco" "$sh_bin" "$hook" >/dev/null 2>&1
+rm -rf "$so_py3"
+if [ -s "$STUB_LOG" ]; then
+    echo "  ok    formata  so com python3 no PATH"
+else
+    echo "  FALHA obtido=ignora  so python3 desligou a formatacao" >&2
+    falhas=$((falhas + 1))
+fi
+
 echo
 if [ "$falhas" -eq 0 ]; then
     echo "ORACULO VERDE: $total/$total casos."

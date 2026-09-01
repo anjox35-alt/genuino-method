@@ -34,15 +34,23 @@ total=0
 # produtor python encanado nele morre com OSError 22 no Windows ao dar flush
 # num pipe ja fechado. Ruido do harness, nao do construto -- mas ruido num
 # oraculo se le como defeito, e um oraculo que grita sozinho perde autoridade.
+#
+# O segundo argumento escolhe o campo que carrega o caminho. `file_path` e o
+# padrao porque e o que Write e Edit mandam; `notebook_path` existe porque o
+# NotebookEdit manda outro nome, e o matcher em settings.json inclui os tres.
+# O nome do campo vai por argv, nunca concatenado na fonte: o construto
+# condenado no proprio hook nao volta pela porta do oraculo.
 decidir() {
+    campo="${2:-file_path}"
     json=$(printf '%s' "$1" | python -c '
 import json, sys
+campo = sys.argv[1]
 print(json.dumps({
     "hook_event_name": "PreToolUse",
-    "tool_name": "Write",
-    "tool_input": {"file_path": sys.stdin.read()},
+    "tool_name": "NotebookEdit" if campo == "notebook_path" else "Write",
+    "tool_input": {campo: sys.stdin.read()},
 }))
-') || return 2
+' "$campo") || return 2
     printf '%s' "$json" | sh "$hook" 2>/dev/null
 }
 
@@ -50,8 +58,9 @@ verificar() {
     caminho="$1"
     esperado="$2"
     motivo="$3"
+    campo="${4:-file_path}"
     total=$((total + 1))
-    saida=$(decidir "$caminho")
+    saida=$(decidir "$caminho" "$campo")
     case "$saida" in
         *'"deny"'*) obtido="deny" ;;
         *)          obtido="allow" ;;
@@ -92,10 +101,23 @@ verificar "$raiz/mcp/Tests/test_x.py"   deny  "Tests capitalizado"
 verificar "$raiz/MCP/TESTS/test_x.py"   deny  "MCP/TESTS caixa alta"
 verificar "$raiz/mcp/tests/Test_X.PY"   deny  "arquivo em caixa alta"
 verificar 'D:\r\mcp\tests\t.py'         deny  "backslash do Windows"
+verificar "$raiz/mcp//tests/test_x.py"  deny  "separador duplicado"
+verificar "$raiz/mcp/./tests/test_x.py" deny  "segmento de ponto"
+verificar "$raiz/mcp/src/../tests/t.py" deny  "segmento pai"
 
 echo "== sob missao ativa: deve PERMITIR fora do oraculo =="
 verificar "$raiz/mcp/src/genuino_mcp/server.py" allow "implementacao, nao oraculo"
 verificar "$raiz/docs/limites.md"               allow "documento"
+verificar "$raiz/mcp/tests/../src/a.py"         allow "o .. sai do oraculo"
+
+echo "== sob missao ativa: NotebookEdit traz o caminho em notebook_path =="
+verificar "$raiz/mcp/tests/oraculo.ipynb" deny  "notebook e oraculo" notebook_path
+verificar "$raiz/docs/caderno.ipynb"      allow "notebook fora do oraculo" notebook_path
+
+echo "== sob missao ativa: caminho relativo tambem nomeia o oraculo =="
+verificar "./mcp/tests/test_x.py"         deny  "relativo com ./"
+verificar "mcp/tests/test_x.py"           deny  "relativo sem ./"
+verificar "mcp/src/genuino_mcp/server.py" allow "relativo fora do oraculo"
 
 rm -f "$sentinela"
 
@@ -128,7 +150,7 @@ case "$raiz" in
 esac
 total=$((total + 1))
 real=$(command -v python) || exit 2
-sabotado=$(mktemp -d)
+sabotado=$(mktemp -d) || exit 2
 # Falha SO na chamada que monta o deny, que passa o id como TERCEIRO
 # argumento; a extracao do alvo usa dois e segue no python de verdade.
 # Um stub que falhasse em tudo mataria a extracao la em cima, o bloco
@@ -163,7 +185,7 @@ total=$((total + 1))
 sh_bin=$(command -v sh) || exit 2
 real_git=$(command -v git) || exit 2
 real_cat=$(command -v cat) || exit 2
-vazio=$(mktemp -d)
+vazio=$(mktemp -d) || exit 2
 cat > "$vazio/git" <<STUBGIT
 #!/bin/sh
 exec "$real_git" "\$@"
@@ -181,6 +203,99 @@ rm -f "$sentinela"
 case "$saida" in
     *'"deny"'*) echo "  ok    deny   interpretador ausente (127 de verdade)" ;;
     *)          echo "  FALHA obtido=allow  interpretador ausente nao foi negado" >&2
+                falhas=$((falhas + 1)) ;;
+esac
+
+echo "== so python3 no PATH: mede o alvo em vez de negar tudo =="
+# Em Linux e macOS de fabrica o binario chama-se `python3` e `python` nao
+# existe. Sem resolver entre os dois, o hook cai em 127 nesses hosts e --
+# com qualquer sentinela presente -- nega TODA escrita da sessao, nao so as
+# de mcp/tests/. O repositorio e publico e a R7 manda o recem-chegado abrir
+# missao antes de mexer, entao esse host e o caso comum, nao o exotico.
+#
+# Wrappers so para git, cat e python3: `python` fica genuinamente ausente do
+# PATH, como no host que este caso representa.
+sh_bin=$(command -v sh) || exit 2
+real_git=$(command -v git) || exit 2
+real_cat=$(command -v cat) || exit 2
+real_py=$(command -v python) || exit 2
+so_py3=$(mktemp -d) || exit 2
+cat > "$so_py3/git" <<STUBGIT3
+#!/bin/sh
+exec "$real_git" "\$@"
+STUBGIT3
+cat > "$so_py3/cat" <<STUBCAT3
+#!/bin/sh
+exec "$real_cat" "\$@"
+STUBCAT3
+cat > "$so_py3/python3" <<STUBPY3
+#!/bin/sh
+exec "$real_py" "\$@"
+STUBPY3
+chmod +x "$so_py3/git" "$so_py3/cat" "$so_py3/python3"
+printf '%s' "missao-so-com-python3" > "$sentinela"
+
+# Fora do oraculo a escrita e legitima: negar aqui e o dano que a resolucao
+# do interpretador existe para impedir.
+total=$((total + 1))
+evento=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$raiz/mcp/src/genuino_mcp/server.py")
+saida=$(printf '%s' "$evento" | PATH="$so_py3" "$sh_bin" "$hook" 2>/dev/null)
+case "$saida" in
+    *'"deny"'*) echo "  FALHA obtido=deny   so python3 negou escrita fora do oraculo" >&2
+                falhas=$((falhas + 1)) ;;
+    *)          echo "  ok    allow  fora do oraculo, so com python3 no PATH" ;;
+esac
+
+# E o fechamento nao pode ter sido trocado por permissividade: dentro do
+# oraculo, o mesmo host continua negando.
+total=$((total + 1))
+evento=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$raiz/mcp/tests/test_x.py")
+saida=$(printf '%s' "$evento" | PATH="$so_py3" "$sh_bin" "$hook" 2>/dev/null)
+case "$saida" in
+    *'"deny"'*) echo "  ok    deny   dentro do oraculo, so com python3 no PATH" ;;
+    *)          echo "  FALHA obtido=allow  so python3 nao protegeu o oraculo" >&2
+                falhas=$((falhas + 1)) ;;
+esac
+rm -rf "$so_py3"
+rm -f "$sentinela"
+
+echo "== normalizacao sem tr no PATH: nao pode falhar em silencio =="
+total=$((total + 1))
+# A normalizacao vivia num pipeline de dois `tr`, cujo exit code o shell
+# descartava. Faltando o binario, a forma de comparacao saia vazia, o `case`
+# nao casava, e o hook liberava a escrita COM missao em curso -- o mesmo modo
+# de falha que o extrator fecha vinte linhas acima, reaberto logo abaixo por
+# um comando externo sem guarda. Com a normalizacao dentro do extrator o hook
+# nao chama `tr` nenhum, e este caso prende essa propriedade, nao so o deny.
+#
+# PATH so com git, cat e python, pelo mesmo motivo do caso anterior: `tr`
+# fica genuinamente ausente, e o `command not found` e real, nao simulado.
+sh_bin=$(command -v sh) || exit 2
+real_git=$(command -v git) || exit 2
+real_cat=$(command -v cat) || exit 2
+real_py=$(command -v python) || exit 2
+sem_tr=$(mktemp -d) || exit 2
+cat > "$sem_tr/git" <<STUBGIT2
+#!/bin/sh
+exec "$real_git" "\$@"
+STUBGIT2
+cat > "$sem_tr/cat" <<STUBCAT2
+#!/bin/sh
+exec "$real_cat" "\$@"
+STUBCAT2
+cat > "$sem_tr/python" <<STUBPY
+#!/bin/sh
+exec "$real_py" "\$@"
+STUBPY
+chmod +x "$sem_tr/git" "$sem_tr/cat" "$sem_tr/python"
+printf '%s' "missao-sem-tr" > "$sentinela"
+evento=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$raiz/mcp/tests/test_x.py")
+saida=$(printf '%s' "$evento" | PATH="$sem_tr" "$sh_bin" "$hook" 2>/dev/null)
+rm -rf "$sem_tr"
+rm -f "$sentinela"
+case "$saida" in
+    *'"deny"'*) echo "  ok    deny   normalizacao nao depende de tr" ;;
+    *)          echo "  FALHA obtido=allow  tr ausente derrubou a normalizacao" >&2
                 falhas=$((falhas + 1)) ;;
 esac
 
@@ -213,10 +328,13 @@ total=$((total + 1))
 # unico jeito de medir QUAL codigo o extrator de fato produz e isolar o bloco
 # python dele e rodar por conta propria. Extraido do hook em tempo de teste,
 # nunca copiado a mao, para nunca divergir do que o hook de fato roda.
-inicio=$(grep -n "^alvo=\$(python -c '$" "$hook" | head -1 | cut -d: -f1)
+# O `.*` no lugar do nome do interpretador nao e folga: o hook resolve entre
+# `python` e `python3` antes de chamar, entao prender o literal aqui faria
+# este caso deixar de achar o bloco e reprovar por defeito do proprio teste.
+inicio=$(grep -n "^normalizado=\$(.* -c '$" "$hook" | head -1 | cut -d: -f1)
 fim=$(grep -n "^' 2>/dev/null)$" "$hook" | head -1 | cut -d: -f1)
 if [ -n "$inicio" ] && [ -n "$fim" ]; then
-    extrator=$(mktemp)
+    extrator=$(mktemp) || exit 2
     sed -n "$((inicio + 1)),$((fim - 1))p" "$hook" > "$extrator"
     printf 'null' | python "$extrator" >/dev/null 2>&1
     codigo_extrator=$?

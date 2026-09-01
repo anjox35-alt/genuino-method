@@ -31,7 +31,21 @@
 
 alvo_json=$(cat)
 
-printf '%s' "$alvo_json" | python -c '
+# `python` nao existe de fabrica em Linux e macOS recentes: la o binario se
+# chama `python3`. Sem resolver entre os dois, o extrator nunca roda nesses
+# hosts, o hook nao imprime nada, e a R4 volta a ser so texto sem que ninguem
+# perceba -- o estado exato que este hook existe para encerrar. Falhar aberto
+# quando NENHUM interpretador existe e a decisao declarada acima; falhar
+# aberto porque o binario tem outro nome e defeito, nao decisao.
+py=""
+for candidato in python python3; do
+    if command -v "$candidato" >/dev/null 2>&1; then
+        py=$candidato
+        break
+    fi
+done
+
+printf '%s' "$alvo_json" | "${py:-python}" -c '
 import json, os, re, sys
 
 try:

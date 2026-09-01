@@ -82,6 +82,38 @@ verificar "$legado"                                allow "existe: editar nao e c
 rm -f "$legado"
 verificar "$legado"                                deny  "mesmo nome, agora inexistente"
 
+echo "== so python3 no PATH: a R4 continua valendo =="
+total=$((total + 1))
+# Em Linux e macOS de fabrica o binario chama-se `python3` e `python` nao
+# existe. Sem resolver entre os dois, o extrator nunca roda nesses hosts, o
+# hook nao imprime nada, e a R4 volta a ser texto sem o operador perceber --
+# que e exatamente o estado que este hook existe para encerrar. Falhar aberto
+# quando NENHUM interpretador existe e decisao declarada no cabecalho; falhar
+# aberto porque o binario tem outro nome e defeito.
+#
+# Wrappers so para cat e python3: `python` fica genuinamente ausente do PATH.
+sh_bin=$(command -v sh) || exit 2
+real_cat=$(command -v cat) || exit 2
+real_py=$(command -v python) || exit 2
+so_py3=$(mktemp -d) || exit 2
+cat > "$so_py3/cat" <<STUBCAT3
+#!/bin/sh
+exec "$real_cat" "\$@"
+STUBCAT3
+cat > "$so_py3/python3" <<STUBPY3
+#!/bin/sh
+exec "$real_py" "\$@"
+STUBPY3
+chmod +x "$so_py3/cat" "$so_py3/python3"
+evento=$(printf '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"%s"}}' "$raiz/docs/notas_final.md")
+saida=$(printf '%s' "$evento" | PATH="$so_py3" "$sh_bin" "$hook" 2>/dev/null)
+rm -rf "$so_py3"
+case "$saida" in
+    *'"deny"'*) echo "  ok    deny     R4 aplicada com so python3 no PATH" ;;
+    *)          echo "  FALHA obtido=allow  so python3 desligou a R4" >&2
+                falhas=$((falhas + 1)) ;;
+esac
+
 echo
 if [ "$falhas" -eq 0 ]; then
     echo "ORACULO VERDE: $total/$total casos."

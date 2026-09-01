@@ -10,17 +10,36 @@
 
 raiz=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
-alvo=$(python -c "
-import json,sys
+# `python` nao existe de fabrica em Linux e macOS recentes: la o binario se
+# chama `python3`. Sem resolver entre os dois, `$alvo` sai vazio nesses hosts
+# e o hook nao formata nada -- calado. A reprovacao aparece minutos depois no
+# `ruff format --check` da CI, que e o atraso de diagnostico que este hook
+# existe para encurtar.
+py=""
+for candidato in python python3; do
+    if command -v "$candidato" >/dev/null 2>&1; then
+        py=$candidato
+        break
+    fi
+done
+
+# Aspas SIMPLES no `-c`: o shell nao expande nada dentro da fonte, que deixa
+# de ser template e passa a ser codigo literal. Hoje nao ha `$` algum ali
+# dentro, entao a troca nao corrige defeito vivo -- fecha o construto que ja
+# falhou uma vez nesta base, no `proteger-oraculo.sh`, onde um id de missao
+# com aspa virava SyntaxError e o hook saia sem decidir. Fechar o construto
+# custa uma linha; descobrir de novo, pelo defeito, custou uma auditoria.
+alvo=$("${py:-python}" -c '
+import json, sys
 try:
     d = json.load(sys.stdin)
 except Exception:
-    print('')
+    print("")
     sys.exit(0)
-tr = d.get('tool_response') or {}
-ti = d.get('tool_input') or {}
-print(tr.get('filePath') or ti.get('file_path') or '')
-" 2>/dev/null)
+tr = d.get("tool_response") or {}
+ti = d.get("tool_input") or {}
+print(tr.get("filePath") or ti.get("file_path") or "")
+' 2>/dev/null)
 
 [ -n "$alvo" ] || exit 0
 
