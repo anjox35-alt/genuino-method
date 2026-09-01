@@ -114,6 +114,18 @@ verificar_id "vazio"           ""
 rm -f "$sentinela"
 
 echo "== deny sobrevive a python quebrado na montagem =="
+# Guarda: o evento deste caso e montado por printf, nao por json.dumps --
+# abaixo o python esta sabotado de proposito, entao precisa ser assim. Mas se
+# $raiz contiver aspa ou barra invertida, o printf produz JSON invalido, o
+# json.load do extrator falha, e o caso passaria a medir o ramo do extrator
+# em vez do fallback que afirma testar. Falharia calado, medindo outra
+# coisa. Aborta ruidoso em vez disso.
+case "$raiz" in
+    *'"'*|*'\'*)
+        echo "ABORTADO: raiz do repo contem aspa ou barra invertida; o printf abaixo produziria JSON invalido." >&2
+        exit 2
+        ;;
+esac
 total=$((total + 1))
 real=$(command -v python) || exit 2
 sabotado=$(mktemp -d)
@@ -138,6 +150,40 @@ case "$saida" in
                 falhas=$((falhas + 1)) ;;
 esac
 
+echo "== interpretador genuinamente ausente: PATH sem python nenhum nega =="
+total=$((total + 1))
+# PATH aponta so para um diretorio quase vazio -- e nao literalmente vazio,
+# porque o hook chama `git` (linha 15) antes de olhar para o sentinela, e
+# `cat` (no ramo de deny) depois. Um PATH vazio de verdade derruba o `git`
+# primeiro: `|| exit 0` dispara, e o caso mediria "git ausente", nao "python
+# ausente" -- media a coisa errada, sem deny nenhum. Confirmado a mao antes
+# deste teste existir. Por isso o diretorio recebe wrappers finos so para
+# git e cat, e mais nada: python continua genuinamente ausente do PATH, e o
+# `command not found` chega como 127 de verdade, nao simulado por um stub.
+sh_bin=$(command -v sh) || exit 2
+real_git=$(command -v git) || exit 2
+real_cat=$(command -v cat) || exit 2
+vazio=$(mktemp -d)
+cat > "$vazio/git" <<STUBGIT
+#!/bin/sh
+exec "$real_git" "\$@"
+STUBGIT
+cat > "$vazio/cat" <<STUBCAT
+#!/bin/sh
+exec "$real_cat" "\$@"
+STUBCAT
+chmod +x "$vazio/git" "$vazio/cat"
+printf '%s' "missao-com-interpretador-ausente" > "$sentinela"
+evento=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$raiz/mcp/tests/test_x.py")
+saida=$(printf '%s' "$evento" | PATH="$vazio" "$sh_bin" "$hook" 2>/dev/null)
+rm -rf "$vazio"
+rm -f "$sentinela"
+case "$saida" in
+    *'"deny"'*) echo "  ok    deny   interpretador ausente (127 de verdade)" ;;
+    *)          echo "  FALHA obtido=allow  interpretador ausente nao foi negado" >&2
+                falhas=$((falhas + 1)) ;;
+esac
+
 echo "== evento ilegivel com missao ativa nao pode abrir =="
 total=$((total + 1))
 printf '%s' "missao-com-evento-quebrado" > "$sentinela"
@@ -148,6 +194,42 @@ case "$saida" in
     *)          echo "  FALHA obtido=allow  nao medir virou aprovar" >&2
                 falhas=$((falhas + 1)) ;;
 esac
+
+echo "== payload json valido porem nao-objeto, com missao ativa: nega =="
+total=$((total + 1))
+printf '%s' "missao-com-payload-nao-objeto" > "$sentinela"
+saida=$(printf '%s' 'null' | sh "$hook" 2>/dev/null)
+rm -f "$sentinela"
+case "$saida" in
+    *'"deny"'*) echo "  ok    deny   payload null (json valido, nao-objeto)" ;;
+    *)          echo "  FALHA obtido=allow  payload nao-objeto nao foi negado" >&2
+                falhas=$((falhas + 1)) ;;
+esac
+
+echo "== extrator isolado: payload nao-objeto deve sair com 3, nao com 1 =="
+total=$((total + 1))
+# O hook sempre sai 0 e colapsa o 3 desenhado com qualquer outro codigo != 0
+# no mesmo deny observavel, de proposito (ver comentario no hook). Por isso o
+# unico jeito de medir QUAL codigo o extrator de fato produz e isolar o bloco
+# python dele e rodar por conta propria. Extraido do hook em tempo de teste,
+# nunca copiado a mao, para nunca divergir do que o hook de fato roda.
+inicio=$(grep -n "^alvo=\$(python -c '$" "$hook" | head -1 | cut -d: -f1)
+fim=$(grep -n "^' 2>/dev/null)$" "$hook" | head -1 | cut -d: -f1)
+if [ -n "$inicio" ] && [ -n "$fim" ]; then
+    extrator=$(mktemp)
+    sed -n "$((inicio + 1)),$((fim - 1))p" "$hook" > "$extrator"
+    printf 'null' | python "$extrator" >/dev/null 2>&1
+    codigo_extrator=$?
+    rm -f "$extrator"
+else
+    codigo_extrator="(bloco do extrator nao encontrado no hook)"
+fi
+if [ "$codigo_extrator" = "3" ]; then
+    echo "  ok    exit=3 payload null (json valido, nao-objeto)"
+else
+    echo "  FALHA exit=$codigo_extrator esperado=3  extrator nao cobre payload nao-objeto" >&2
+    falhas=$((falhas + 1))
+fi
 
 echo
 if [ "$falhas" -eq 0 ]; then

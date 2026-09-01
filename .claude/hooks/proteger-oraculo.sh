@@ -22,14 +22,22 @@ sentinela="$raiz/runs/.missao-ativa"
 # pode ser lido -- nao medi. Exit 0 com saida vazia significa que o evento foi
 # lido e simplesmente nao carrega caminho, como num Bash -- medi, e nao ha
 # alvo. Colapsar as duas fazia "nao consegui" virar "pode escrever".
+#
+# O try cobre tambem o acesso (d.get, ti.get), nao so o json.load. Um payload
+# JSON valido porem nao-objeto -- null, 42, [1,2] -- passava pelo json.load e
+# so quebrava depois, no d.get(...), com AttributeError: Python leva isso a
+# exit 1, nao ao exit 3 desenhado. O deny observavel saia igual, porque
+# qualquer codigo != 0 cai no mesmo lugar abaixo -- mas era rede acidental,
+# nao projetada. Medido.
 alvo=$(python -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
+    ti = d.get("tool_input") or {}
+    alvo = ti.get("file_path") or ti.get("path") or ""
 except Exception:
     sys.exit(3)
-ti = d.get("tool_input") or {}
-print(ti.get("file_path") or ti.get("path") or "")
+print(alvo)
 ' 2>/dev/null)
 codigo=$?
 

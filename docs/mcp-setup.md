@@ -24,6 +24,13 @@ O binário fica em `%LOCALAPPDATA%\Programs\codebase-memory-mcp` e o instalador 
 adiciona ao PATH do usuário; uma sessão aberta antes da instalação não o
 encontra até ser reiniciada.
 
+Sem o binário instalado, o Claude Code tenta subir o servidor e a sessão
+mostra `CONNECTION_CLOSED` para `codebase-memory` — sintoma esperado antes da
+instalação, não defeito deste repositório. O registro em `.mcp.json` fica
+mesmo assim: removê-lo puniria quem já instalou o binário para poupar quem
+ainda não instalou, e nenhum dos outros dois servidores depende dele — a
+tabela no topo já os registra lado a lado, cada um respondendo sozinho.
+
 ## Por que lado a lado, e não um dentro do outro
 
 A ideia inicial era o `genuino` fazer passthrough do Context7. Ao verificar o
